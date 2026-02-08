@@ -7,7 +7,7 @@ from Plots import run_all_plots
 
 # Setup paths
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(project_root, 'models'))
+sys.path.append(os.path.join(project_root, 'src', 'models'))
 
 from Random_forest import train_random_forest
 from Gradientboosting import train_gradient_boosting
