@@ -15,6 +15,36 @@ from SVM import train_svm
 
 
 def main():
+    """
+    Main entry point for the marine vessel propulsion systems analysis and modeling pipeline.
+
+    This function orchestrates the complete workflow including:
+    - Loading and cleaning the dataset
+    - Splitting data into training and test sets
+    - Generating exploratory data analysis plots
+    - Training multiple machine learning models (Random Forest, Gradient Boosting, SVM)
+    - Comparing model performance metrics
+    - Visualizing and saving performance comparison graphs
+
+    The function automatically detects the working directory to set appropriate file paths
+    for data and output images. It trains three regression models, collects their performance
+    metrics (R2 scores on both train and test sets), and generates a comparative visualization.
+
+    Outputs:
+        - Train/test CSV files saved to Data/ directory
+        - Analysis plots saved to images/ directory
+        - Model performance comparison table printed to console
+        - Model performance comparison graph saved as 'model_performance_comparison.png'
+
+    Raises:
+        FileNotFoundError: If required data files or directories cannot be found
+        ImportError: If required model modules (Random_forest, Gradientboosting, SVM) are not available
+
+    Note:
+        This function assumes the presence of helper functions: load_and_clean_data(),
+        split_and_save_data(), run_all_plots(), train_random_forest(),
+        train_gradient_boosting(), and train_svm().
+    """
     df = load_and_clean_data()
     split_and_save_data(df)
 

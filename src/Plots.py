@@ -6,7 +6,42 @@ import os
 
 def run_all_plots(df, image_dir):
     """
-    Executes all plotting logic: correlation heatmap and speed-based torque/fuel plots.
+    Generate and save comprehensive visualization plots for marine vessel propulsion data.
+
+    This function creates multiple plot types to analyze vessel propulsion parameters:
+    1. A correlation heatmap showing relationships between all numerical parameters
+    2. Speed-specific plots showing GT torque and propeller torques over time
+    3. Speed-specific plots showing turbine torque and fuel flow rate over time
+
+    Args:
+        df (pandas.DataFrame): DataFrame containing marine vessel propulsion data with columns:
+            - 'Ship speed (v)': Vessel speed values
+            - 'Gas Turbine (GT) shaft torque (GTT) (kN m)': GT shaft torque measurements
+            - 'Starboard Propeller Torque (Ts) (kN)': Starboard propeller torque
+            - 'Port Propeller Torque (Tp) (kN)': Port propeller torque
+            - 'Fuel flow (mf) (kg/s)': Fuel consumption rate
+            - Other numerical parameters for correlation analysis
+        image_dir (str): Directory path where generated plot images will be saved.
+            Directory must exist or be creatable.
+
+    Returns:
+        None: Plots are saved to disk and displayed via plt.show()
+
+    Side Effects:
+        - Closes all existing matplotlib figures
+        - Creates and saves PNG files in the specified image_dir:
+            * 'correlation_heatmap.png': Correlation matrix heatmap
+            * 'propeller_torque_speed_{speed}.png': Per-speed GT and propeller torque plots
+            * 'torque_and_fuel_speed_{speed}.png': Per-speed turbine torque and fuel flow plots
+        - Prints confirmation messages for saved files to stdout
+        - Displays the correlation heatmap via plt.show()
+
+    Example:
+        >>> import pandas as pd
+        >>> df = pd.read_csv('propulsion_data.csv')
+        >>> run_all_plots(df, './output_images')
+        Saved: ./output_images/correlation_heatmap.png
+        Generated speed-based plots for 5 different speeds in ./output_images.
     """
     plt.close('all')
 

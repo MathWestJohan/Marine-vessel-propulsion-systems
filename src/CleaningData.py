@@ -4,8 +4,45 @@ from sklearn.model_selection import train_test_split
 
 def load_and_clean_data(file_path='Data/data.csv'):
     """
-    Imports the data, strips column names, and removes duplicates/missing values.
-    Also sanitizes column names for compatibility with XGBoost.
+    Load and clean the marine vessel propulsion dataset from a CSV file.
+
+    This function performs the following operations:
+    1. Locates and loads the CSV file from the specified path
+    2. Sanitizes column names by:
+        - Stripping whitespace
+        - Replacing '[' with '('
+        - Replacing ']' with ')'
+        - Replacing '<' with 'less_than'
+        (These changes ensure XGBoost compatibility)
+    3. Identifies and exports duplicate rows to 'dropped_duplicates.csv'
+    4. Removes duplicate rows (keeping first occurrence)
+    5. Removes rows with missing values
+
+    Parameters
+    ----------
+    file_path : str, optional
+         Path to the CSV data file, by default 'Data/data.csv'
+         The function will also check one directory up if the file is not found
+         at the specified path.
+
+    Returns
+    -------
+    pandas.DataFrame
+         A cleaned DataFrame with sanitized column names, no duplicates,
+         and no missing values.
+
+    Raises
+    ------
+    FileNotFoundError
+         If the data file cannot be found at the specified path or one
+         directory up.
+
+    Notes
+    -----
+    - Duplicate rows are saved to 'dropped_duplicates.csv' in the current
+      working directory before being removed.
+    - Column name sanitization is critical for XGBoost model compatibility.
+
     """
     if not os.path.exists(file_path) and os.path.exists(os.path.join('..', file_path)):
         file_path = os.path.join('..', file_path)
