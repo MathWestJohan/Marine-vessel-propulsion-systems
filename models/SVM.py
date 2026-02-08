@@ -5,6 +5,31 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 
 def train_svm(train_path, test_path, image_dir):
+    """
+    Train a Support Vector Machine (SVM) regression model for predicting GT Compressor decay state coefficient.
+
+    This function loads training and testing data from CSV files, preprocesses the features using
+    StandardScaler, trains an SVR model with RBF kernel, and evaluates its performance.
+
+    Args:
+        train_path (str): Path to the training data CSV file.
+        test_path (str): Path to the testing data CSV file.
+        image_dir (str): Directory path for saving images (currently unused).
+
+    Returns:
+        dict: A dictionary containing model evaluation metrics with the following keys:
+            - "Model" (str): Name of the model ("SVM")
+            - "Train R2" (float): R² score on training data
+            - "Test R2" (float): R² score on testing data
+            - "Train MAE" (float): Mean Absolute Error on training data
+            - "Test MAE" (float): Mean Absolute Error on testing data
+
+    Note:
+        - The function drops 'GT Compressor decay state coefficient' and 
+          'GT Turbine decay state coefficient' columns before training.
+        - Uses RBF kernel with C=1.0 and epsilon=0.01 hyperparameters.
+        - Features are standardized using StandardScaler.
+    """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
     target = 'GT Compressor decay state coefficient'
     drop_cols = [target, 'GT Turbine decay state coefficient']
