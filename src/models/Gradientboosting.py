@@ -32,8 +32,12 @@ def train_gradient_boosting(train_path, test_path, image_dir):
     target = 'GT Compressor decay state coefficient'
     drop_cols = [target, 'GT Turbine decay state coefficient']
 
-    X_train, y_train = train_df.drop(columns=drop_cols), train_df[target]
-    X_test, y_test = test_df.drop(columns=drop_cols), test_df[target]
+    # Use errors='ignore' to prevent KeyError if a column was already dropped by CleaningData.py
+    X_train = train_df.drop(columns=drop_cols, errors='ignore')
+    y_train = train_df[target]
+
+    X_test = test_df.drop(columns=drop_cols, errors='ignore')
+    y_test = test_df[target]
 
     model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
     model.fit(X_train, y_train)

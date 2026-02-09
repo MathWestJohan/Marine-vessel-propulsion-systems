@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from CleaningData import load_and_clean_data, split_and_save_data
 from Plots import run_all_plots
+from ModelEvaluationPlots import run_model_comparison_plots
 
 # Setup paths
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -81,6 +82,17 @@ def main():
     save_path = os.path.join(image_dir, 'model_performance_comparison.png')
     plt.savefig(save_path)
     print(f"\nComparison graph saved to {save_path}")
+    plt.show()
+
+    save_path = os.path.join(image_dir, 'model_performance_comparison.png')
+    plt.savefig(save_path)
+    print(f"\nComparison graph saved to {save_path}")
+    plt.show()  # Dette viser R2-grafen først
+
+    # Generer de dypere analysene for Presentation 2
+    run_model_comparison_plots(train_path, test_path, image_dir)
+
+    # Vis de nye plottene (Actual vs Predicted og Residuals)
     plt.show()
 
 
