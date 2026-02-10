@@ -13,7 +13,7 @@ duplicate_rows = df[df.duplicated(keep='first')]
 # Save the duplicates to a list of dictionaries (if you want a Python list)
 dropped_duplicates_list = duplicate_rows.to_dict('records')
 
-# OR Save them to a CSV file to inspect them later
+# OR Save them to a CSV file to inspect them 
 if not duplicate_rows.empty:
     duplicate_rows.to_csv('dropped_duplicates.csv', index=False)
     print(f"Captured {len(duplicate_rows)} duplicate rows.")
