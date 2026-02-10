@@ -42,7 +42,7 @@ def train_svm(train_path, test_path, target_col, image_dir=None):
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    model = SVR(kernel='rbf', C=10.0, epsilon=0.001)
+    model = SVR(kernel='rbf', C=10.0, epsilon=0.0001)
     model.fit(X_train_scaled, y_train)
 
     target_name = "Compressor" if "Compressor" in target_col else "Turbine"
