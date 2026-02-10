@@ -33,7 +33,6 @@ class PropulsionDigitalTwin:
         turb_decay = self.turbine_model.predict(input_scaled)[0]
 
         status = {
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
             "compressor_health": round(comp_decay, 4),
             "turbine_health": round(turb_decay, 4),
             "comp_alert": comp_decay < self.MAINTENANCE_THRESHOLD,
