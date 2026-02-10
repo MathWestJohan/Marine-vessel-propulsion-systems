@@ -20,7 +20,7 @@ def run_model_comparison_plots(train_path, test_path, target_col, image_dir):
     # Use the provided target and ensure BOTH decay coefficients are dropped from features
     # to avoid data leakage.
     target = target_col
-    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
+    drop_cols = ['index', 'GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
 
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
     y_train = train_df[target]
