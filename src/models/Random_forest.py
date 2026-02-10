@@ -1,10 +1,8 @@
 import pandas as pd
-import os
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 
-
-def train_random_forest(train_path, test_path, image_dir):
+def train_random_forest(train_path, test_path, target_col, image_dir=None):
     """
     Train a Random Forest Regressor model to predict GT Compressor decay state coefficient.
 
@@ -30,30 +28,25 @@ def train_random_forest(train_path, test_path, image_dir):
         - The target variable is 'GT Compressor decay state coefficient'.
         - Uses 100 estimators with random_state=42 for reproducibility.
     """
-    # Load Data
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
-    target = 'GT Compressor decay state coefficient'
-    drop_cols = [target, 'GT Turbine decay state coefficient']
 
-    # Use errors='ignore' to prevent KeyError if a column was already dropped by CleaningData.py
+    # Drop both targets from features
+    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
-    y_train = train_df[target]
+    y_train = train_df[target_col]
 
     X_test = test_df.drop(columns=drop_cols, errors='ignore')
-    y_test = test_df[target]
+    y_test = test_df[target_col]
 
-    # Train
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
 
-    # Evaluate both
-    train_preds = model.predict(X_train)
-    test_preds = model.predict(X_test)
+    target_name = "Compressor" if "Compressor" in target_col else "Turbine"
 
     return {
-        "Model": "Random Forest",
-        "Train R2": r2_score(y_train, train_preds),
-        "Test R2": r2_score(y_test, test_preds),
-        "Train MAE": mean_absolute_error(y_train, train_preds),
-        "Test MAE": mean_absolute_error(y_test, test_preds)
+        "Model": f"RF ({target_name})",
+        "Train R2": r2_score(y_train, model.predict(X_train)),
+        "Test R2": r2_score(y_test, model.predict(X_test)),
+        "Train MAE": mean_absolute_error(y_train, model.predict(X_train)),
+        "Test MAE": mean_absolute_error(y_test, model.predict(X_test))
     }

@@ -4,16 +4,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from CleaningData import load_and_clean_data, split_and_save_data
 from Plots import run_all_plots
-from ModelEvaluationPlots import run_model_comparison_plots
+
 
 # Setup paths
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(project_root, 'src', 'models'))
 
+# NOW import the models and evaluation plots
 from Random_forest import train_random_forest
 from Gradientboosting import train_gradient_boosting
 from SVM import train_svm
-
+from ModelEvaluationPlots import run_model_comparison_plots # Move import here
 
 def main():
     """
@@ -56,43 +57,33 @@ def main():
         train_path, test_path = 'Data/train.csv', 'Data/test.csv'
         image_dir = 'images'
 
-    # Run Analysis Plots
+    # EDA Plots
     run_all_plots(df, image_dir)
 
-    # Run ML Models and collect metrics
-    print("\n--- Comparing Train vs Test Performance ---")
-    results = [
-        train_random_forest(train_path, test_path, image_dir),
-        train_gradient_boosting(train_path, test_path, image_dir),
-        train_svm(train_path, test_path, image_dir)
-    ]
+    targets = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
+    all_results = []
 
-    # Create Comparison Table
-    comparison_df = pd.DataFrame(results)
-    print("\n", comparison_df)
+    for target in targets:
+        print(f"\n--- Training for {target} ---")
+        results = [
+            train_random_forest(train_path, test_path, target, image_dir),
+            train_gradient_boosting(train_path, test_path, target, image_dir),
+            train_svm(train_path, test_path, target, image_dir)
+        ]
+        all_results.extend(results)
 
-    # Generate Comparison Graph
-    comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(10, 6))
-    plt.title('R2 Score Comparison: Training vs. Testing')
+        # Detailed comparison plots for this specific target
+        run_model_comparison_plots(train_path, test_path, target, image_dir)
+
+    # Final summary table
+    comparison_df = pd.DataFrame(all_results)
+    print("\nFinal Model Comparison Table:\n", comparison_df)
+
+    # Summary Plot for R2 Scores
+    comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(12, 6))
+    plt.title('Overall R2 Score Comparison')
     plt.ylabel('R2 Score')
-    plt.ylim(0, 1.1)
-    plt.xticks(rotation=0)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-    save_path = os.path.join(image_dir, 'model_performance_comparison.png')
-    plt.savefig(save_path)
-    print(f"\nComparison graph saved to {save_path}")
-    plt.show()
-
-    save_path = os.path.join(image_dir, 'model_performance_comparison.png')
-    plt.savefig(save_path)
-    print(f"\nComparison graph saved to {save_path}")
-    plt.show()  # Dette viser R2-grafen først
-
-    # Generer de dypere analysene for Presentation 2
-    run_model_comparison_plots(train_path, test_path, image_dir)
-
-    # Vis de nye plottene (Actual vs Predicted og Residuals)
+    plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'))
     plt.show()
 
 

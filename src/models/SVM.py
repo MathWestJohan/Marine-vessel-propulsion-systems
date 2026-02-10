@@ -3,7 +3,7 @@ from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error, r2_score
 
-def train_svm(train_path, test_path, image_dir):
+def train_svm(train_path, test_path, target_col, image_dir=None):
     """
     Train a Support Vector Machine (SVM) regression model for predicting GT Compressor decay state coefficient.
 
@@ -30,29 +30,25 @@ def train_svm(train_path, test_path, image_dir):
         - Features are standardized using StandardScaler.
     """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
-    target = 'GT Compressor decay state coefficient'
-    drop_cols = [target, 'GT Turbine decay state coefficient']
+    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
 
-    # 2. Separate Features and Target
-    # Use errors='ignore' so it doesn't crash if CleaningData.py already dropped these
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
-    y_train = train_df[target]
+    y_train = train_df[target_col]
 
     X_test = test_df.drop(columns=drop_cols, errors='ignore')
-    y_test = test_df[target]
+    y_test = test_df[target_col]
 
-    # 3. Scaling (Required for SVM to work correctly)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)  # This defines X_train_scaled
-    X_test_scaled = scaler.transform(X_test)  # This defines X_test_scaled
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-    # 4. Train
     model = SVR(kernel='rbf', C=1.0, epsilon=0.01)
     model.fit(X_train_scaled, y_train)
 
-    # 5. Evaluate and Return Metrics
+    target_name = "Compressor" if "Compressor" in target_col else "Turbine"
+
     return {
-        "Model": "SVM",
+        "Model": f"SVM ({target_name})",
         "Train R2": r2_score(y_train, model.predict(X_train_scaled)),
         "Test R2": r2_score(y_test, model.predict(X_test_scaled)),
         "Train MAE": mean_absolute_error(y_train, model.predict(X_train_scaled)),

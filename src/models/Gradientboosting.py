@@ -2,8 +2,7 @@ import pandas as pd
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 
-
-def train_gradient_boosting(train_path, test_path, image_dir):
+def train_gradient_boosting(train_path, test_path, target_col, image_dir=None):
     """
     Train an XGBoost gradient boosting model for predicting GT Compressor decay state coefficient.
 
@@ -29,21 +28,21 @@ def train_gradient_boosting(train_path, test_path, image_dir):
         - Model uses 100 estimators with a learning rate of 0.1 and random_state=42 for reproducibility.
     """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
-    target = 'GT Compressor decay state coefficient'
-    drop_cols = [target, 'GT Turbine decay state coefficient']
+    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
 
-    # Use errors='ignore' to prevent KeyError if a column was already dropped by CleaningData.py
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
-    y_train = train_df[target]
+    y_train = train_df[target_col]
 
     X_test = test_df.drop(columns=drop_cols, errors='ignore')
-    y_test = test_df[target]
+    y_test = test_df[target_col]
 
     model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
     model.fit(X_train, y_train)
 
+    target_name = "Compressor" if "Compressor" in target_col else "Turbine"
+
     return {
-        "Model": "XGBoost",
+        "Model": f"XGBoost ({target_name})",
         "Train R2": r2_score(y_train, model.predict(X_train)),
         "Test R2": r2_score(y_test, model.predict(X_test)),
         "Train MAE": mean_absolute_error(y_train, model.predict(X_train)),
