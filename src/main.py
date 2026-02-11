@@ -13,8 +13,8 @@ from Random_forest import train_random_forest
 from Gradientboosting import train_gradient_boosting
 from SVM import train_svm
 from ModelEvaluationPlots import run_model_comparison_plots
-# Add-on Import
-from DigitalTwin import PropulsionDigitalTwin, launch_digital_twin_dashboard
+from DigitalTwin import PropulsionDigitalTwin
+from dashboard import launch_dashboard
 
 def select_best_model(results, metric="Test R2"):
     """
@@ -85,7 +85,7 @@ def main():
         compressor_model=best_models["Compressor"],
         turbine_model=best_models["Turbine"]
     )
-    launch_digital_twin_dashboard(dt_twin)
+    launch_dashboard(dt_twin)
 
 
 if __name__ == "__main__":
