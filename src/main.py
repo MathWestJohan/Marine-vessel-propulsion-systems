@@ -16,6 +16,21 @@ from ModelEvaluationPlots import run_model_comparison_plots
 # Add-on Import
 from DigitalTwin import PropulsionDigitalTwin, launch_digital_twin_dashboard
 
+def select_best_model(results, metric="Test R2"):
+    """
+    Selects the best model based on the specified metric.
+
+    Args:
+        results (list of dict): List of model performance dictionaries.
+        metric (str): The metric to use for selection (default is "Test R2").
+
+    Returns:
+        dict: The dictionary containing the best model's performance and object.
+    """
+    best = max(results, key=lambda r: r[metric])
+    print(f"  Best model: {best['Model']} (Test R²={best[metric]:.6f})")
+    return best
+
 
 def main():
     # 1. Existing Data Setup
@@ -32,16 +47,14 @@ def main():
     # 2. Existing EDA Plots
     run_all_plots(df, image_dir)
 
-    # 3. Existing Model Training & Comparison Logic
+    # 3. Model Training and Comparison
     targets = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
     all_results = []
-
-    # We will store the best models for the Digital Twin
     best_models = {}
 
     for target in targets:
+        target_key = "Compressor" if "Compressor" in target else "Turbine"
         print(f"\n--- Training for {target} ---")
-        # Keep all your original models
         results = [
             train_random_forest(train_path, test_path, target, image_dir),
             train_gradient_boosting(train_path, test_path, target, image_dir),
@@ -49,9 +62,8 @@ def main():
         ]
         all_results.extend(results)
 
-        # Save the best model (e.g., Random Forest) specifically for the Digital Twin add-on
-        target_key = "Compressor" if "Compressor" in target else "Turbine"
-        best_models[target_key] = results[0]["model_object"]
+        best = select_best_model(results, metric="Test R2")
+        best_models[target_key] = best["model_object"]
 
         # Detailed comparison plots for this specific target
         run_model_comparison_plots(train_path, test_path, target, image_dir)
@@ -66,8 +78,9 @@ def main():
     plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'))
     plt.show()
 
-    # 5. NEW ADD-ON: Digital Twin & Predictive Maintenance Dashboard
-    print("\n--- [ADD-ON] Launching Digital Twin Dashboard ---")
+    # 5. Digital Twin & Predictive Maintenance Dashboard
+    print("\n--- Launching Digital Twin Dashboard ---")
+    print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
     dt_twin = PropulsionDigitalTwin(
         compressor_model=best_models["Compressor"],
         turbine_model=best_models["Turbine"]
