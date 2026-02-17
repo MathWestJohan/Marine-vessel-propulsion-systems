@@ -49,5 +49,6 @@ def train_random_forest(train_path, test_path, target_col, image_dir=None):
         "Test R2": r2_score(y_test, model.predict(X_test)),
         "Train MAE": mean_absolute_error(y_train, model.predict(X_train)),
         "Test MAE": mean_absolute_error(y_test, model.predict(X_test)),
-        "model_object": model  # This allows the Digital Twin to use the trained model
+        "model_object": model,  # This allows the Digital Twin to use the trained model
+        "scaler": None  # Random Forest does not require feature scaling
     }
