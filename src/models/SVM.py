@@ -30,7 +30,7 @@ def train_svm(train_path, test_path, target_col, image_dir=None):
         - Features are standardized using StandardScaler.
     """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
-    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
+    drop_cols = ['index', 'GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
 
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
     y_train = train_df[target_col]

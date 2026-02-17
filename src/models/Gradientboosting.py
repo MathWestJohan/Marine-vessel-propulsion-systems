@@ -28,7 +28,7 @@ def train_gradient_boosting(train_path, test_path, target_col, image_dir=None):
         - Model uses 100 estimators with a learning rate of 0.1 and random_state=42 for reproducibility.
     """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
-    drop_cols = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
+    drop_cols = ['index', 'GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
 
     X_train = train_df.drop(columns=drop_cols, errors='ignore')
     y_train = train_df[target_col]
