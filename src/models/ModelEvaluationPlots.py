@@ -39,7 +39,7 @@ def run_model_comparison_plots(train_path, test_path, target_col, image_dir):
     models = {
         "Random Forest": (RandomForestRegressor(n_estimators=100, random_state=42), X_train, X_test),
         "XGBoost": (XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42), X_train, X_test),
-        "SVM": (SVR(kernel='rbf', C=1.0, epsilon=0.01), X_train_scaled, X_test_scaled)
+        "SVM": (SVR(kernel='rbf', C=10.0, epsilon=0.0001), X_train_scaled, X_test_scaled)
     }
 
     predictions = {}
