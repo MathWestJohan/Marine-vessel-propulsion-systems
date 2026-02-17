@@ -107,6 +107,6 @@ def estimate_remaining_life(slope, current, threshold=0.90):
     threshold: health level at which maintenance is required
     """
     if slope >= 0:
-        return float('Stable')  # No degradation or improving
+        return "Stanle" # No degradation or improving
     remaining = (threshold - current) / slope
     return f"{abs(remaining):,.0f} samples" if remaining > 0 else "Maintenance Due"
