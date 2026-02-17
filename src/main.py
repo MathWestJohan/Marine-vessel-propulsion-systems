@@ -51,6 +51,7 @@ def main():
     targets = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
     all_results = []
     best_models = {}
+    best_scalers = {}
 
     for target in targets:
         target_key = "Compressor" if "Compressor" in target else "Turbine"
@@ -64,13 +65,14 @@ def main():
 
         best = select_best_model(results, metric="Test R2")
         best_models[target_key] = best["model_object"]
+        best_scalers[target_key] = best.get("scaler", None)
 
         # Detailed comparison plots for this specific target
         run_model_comparison_plots(train_path, test_path, target, image_dir)
 
     # 4. Existing Final Summary Table & Plot
     comparison_df = pd.DataFrame(all_results)
-    print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object'], errors='ignore'))
+    print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object', 'scaler'], errors='ignore'))
 
     comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(12, 6))
     plt.title('Overall R2 Score Comparison')
@@ -83,7 +85,9 @@ def main():
     print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
     dt_twin = PropulsionDigitalTwin(
         compressor_model=best_models["Compressor"],
-        turbine_model=best_models["Turbine"]
+        turbine_model=best_models["Turbine"],
+        comp_scaler=best_scalers["Compressor"],
+        turb_scaler=best_scalers["Turbine"]
     )
     launch_dashboard(dt_twin)
 

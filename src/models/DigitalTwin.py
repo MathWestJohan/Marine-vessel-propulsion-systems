@@ -8,10 +8,13 @@ class PropulsionDigitalTwin:
     Integrates predictive models with health monitoring and maintenance alerts.
     """
 
-    def __init__(self, compressor_model, turbine_model, scaler=None):
+    def __init__(self, compressor_model, turbine_model, scaler=None,
+                 comp_scaler=None, turb_scaler=None):
         self.compressor_model = compressor_model
         self.turbine_model = turbine_model
         self.scaler = scaler
+        self.comp_scaler = comp_scaler
+        self.turb_scaler = turb_scaler
         self.health_history = []
         self.MAINTENANCE_THRESHOLD = 0.96
 
@@ -82,7 +85,8 @@ def compute_kalman_metrics(df):
 
 def detect_faults(df, threshold_sigma=2.5):
     """
-    Flag samples where innovation exceeds threshold
+    Flag samples where innovation exceeds threshold.
+    Returns (flags, metrics) tuple.
     """
     metrics = compute_kalman_metrics(df)
     flags = []
@@ -94,8 +98,11 @@ def detect_faults(df, threshold_sigma=2.5):
         n_faults = int(np.sum(fault_mask))
         pct = 100 * n_faults / len(innov) if len(innov) > 0 else 0
         flags.append({
-            "component": label, "n_faults": n_faults, "pct": pct,
-            "sigma": sigma, "threshold": threshold_sigma,
+            "component": label,
+            "n_faults": n_faults,
+            "pct": pct,
+            "sigma": sigma,
+            "threshold": threshold_sigma,
         })
     return flags, metrics
 
@@ -107,6 +114,6 @@ def estimate_remaining_life(slope, current, threshold=0.90):
     threshold: health level at which maintenance is required
     """
     if slope >= 0:
-        return "Stanle" # No degradation or improving
+        return "Stable" # No degradation or improving
     remaining = (threshold - current) / slope
     return f"{abs(remaining):,.0f} samples" if remaining > 0 else "Maintenance Due"

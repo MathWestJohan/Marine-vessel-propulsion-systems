@@ -54,6 +54,11 @@ def sensor_html(df):
         ("Fuel Flow", f'{latest["fuel_flow"]:.4f}', "kg/s", AMBER),
         ("Ship Speed (response)", f'{latest["ship_speed"]:.0f}', "knots", CYAN),
     ]
+    if "t1" in df.columns:
+        sensors.insert(6, ("Compressor Inlet Temp", f'{latest["t1"]:.1f}', "\u00b0C", AMBER))
+    if "p1" in df.columns:
+        sensors.insert(9, ("Compressor Inlet Press.", f'{latest["p1"]:.3f}', "bar", TEAL))
+    
     html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">'
     for t, v, u, c in sensors:
         html += _card(t, v, u, c)
@@ -61,20 +66,25 @@ def sensor_html(df):
     return html
 
 
-def health_html(df):
-    """Health status cards with Kalman metrics."""
+def health_html(df, dt_instance=None, source_label="CSV-based"):
+    """Health status cards."""
     comp_val = df["comp_decay"].mean()
     turb_val = df["turb_decay"].mean()
-    cc, cl = _status_color(comp_val)
-    tc, tl = _status_color(turb_val)
-
-    faults, metrics = detect_faults(df)
-    comp_f, turb_f = faults[0], faults[1]
-
     comp_trend = np.polyfit(range(len(df)), df["comp_decay"].values, 1)
     turb_trend = np.polyfit(range(len(df)), df["turb_decay"].values, 1)
     comp_maint = estimate_remaining_life(comp_trend[0], comp_val)
     turb_maint = estimate_remaining_life(turb_trend[0], turb_val)
+    comp_std = df["comp_decay"].std()
+    turb_std = df["turb_decay"].std()
+
+    faults, _metrics = detect_faults(df)
+    comp_f = next((f for f in faults if f["component"] == "Compressor"), {"n_faults": 0, "pct": 0.0})
+    turb_f = next((f for f in faults if f["component"] == "Turbine"), {"n_faults": 0, "pct": 0.0})
+    n_faults_comp = comp_f["n_faults"]
+    n_faults_turb = turb_f["n_faults"]
+
+    cc, cl = _status_color(comp_val)
+    tc, tl = _status_color(turb_val)
 
     html = f"""
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -85,11 +95,12 @@ def health_html(df):
             </div>
             <div style="font-size:36px;font-weight:700;color:{cc};font-family:'JetBrains Mono',monospace;">{comp_val:.4f}</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:{DIM};">
-                <div>Innovation &sigma;: <span style="color:{TEXT};">{metrics['Compressor']['std_innov']:.6f}</span></div>
-                <div>Innovation Cov: <span style="color:{TEXT};">{metrics['Compressor']['covariance']:.2e}</span></div>
-                <div>Fault Flags: <span style="color:{RED if comp_f['n_faults'] > 0 else TEAL};">{comp_f['n_faults']} ({comp_f['pct']:.1f}%)</span></div>
+                <div>Innovation σ: <span style="color:{TEXT};">{comp_std:.6f}</span></div>
+                <div>Std: <span style="color:{TEXT};">{comp_std:.6f}</span></div>
+                <div>Fault Flags: <span style="color:{RED if n_faults_comp > 0 else TEAL};">{n_faults_comp} ({comp_f['pct']:.1f}%)</span></div>
                 <div>Est. Maintenance: <span style="color:{AMBER};">{comp_maint}</span></div>
             </div>
+            <div style="margin-top:6px;font-size:9px;color:{DIM};">Source: {source_label}</div>
         </div>
         <div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -98,11 +109,12 @@ def health_html(df):
             </div>
             <div style="font-size:36px;font-weight:700;color:{tc};font-family:'JetBrains Mono',monospace;">{turb_val:.4f}</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:{DIM};">
-                <div>Innovation &sigma;: <span style="color:{TEXT};">{metrics['Turbine']['std_innov']:.6f}</span></div>
-                <div>Innovation Cov: <span style="color:{TEXT};">{metrics['Turbine']['covariance']:.2e}</span></div>
-                <div>Fault Flags: <span style="color:{RED if turb_f['n_faults'] > 0 else TEAL};">{turb_f['n_faults']} ({turb_f['pct']:.1f}%)</span></div>
+                <div>Innovation σ: <span style="color:{TEXT};">{turb_std:.6f}</span></div>
+                <div>Std: <span style="color:{TEXT};">{turb_std:.6f}</span></div>
+                <div>Fault Flags: <span style="color:{RED if n_faults_turb > 0 else TEAL};">{n_faults_turb} ({turb_f['pct']:.1f}%)</span></div>
                 <div>Est. Maintenance: <span style="color:{AMBER};">{turb_maint}</span></div>
             </div>
+            <div style="margin-top:6px;font-size:9px;color:{DIM};">Source: {source_label}</div>
         </div>
     </div>"""
     return html
