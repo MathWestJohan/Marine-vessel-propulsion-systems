@@ -10,8 +10,9 @@ This project analyzes data from marine vessel propulsion systems to predict perf
 
 - Cleans and processes marine vessel operational data
 - Visualizes relationships between different propulsion system parameters
-- Trains three different machine learning models to predict gas turbine torque
-- Compares model performance to find the best predictor
+- Trains various machine learning models (Random Forest, SVM, Gradient Boosting) to predict compressor and turbine degradation.
+- **Interactive Digital Twin Dashboard**: A Gradio-based interface to monitor vessel health in real-time.
+- **AI Assistant**: An Ollama-powered chatbot that provides technical insights and maintenance recommendations based on live sensor data.
 
 ## Models Used
 
@@ -21,12 +22,19 @@ This project analyzes data from marine vessel propulsion systems to predict perf
 
 ## How to Run
 
-```bash
-cd src
-python main.py
-```
-
-This will process the data, train all models, and generate performance comparisons.
+1. **Setup Environment**:
+   ```bash
+   pip install pandas numpy matplotlib seaborn scikit-learn joblib gradio ollama python-dotenv
+   ```
+2. **Setup Ollama**:
+   Ensure [Ollama](https://ollama.com/) is installed and running, then pull a model:
+   ```bash
+   ollama pull llama3
+   ```
+3. **Launch Dashboard**:
+   ```bash
+   python src/main.py
+   ```
 
 ## Project Structure
 
@@ -42,8 +50,9 @@ This will process the data, train all models, and generate performance compariso
 
 ## Requirements
 
-- Python 3.7+
-- pandas, numpy, matplotlib, seaborn, scikit-learn
+- Python 3.8+
+- pandas, numpy, matplotlib, seaborn, scikit-learn, joblib
+- gradio, ollama, python-dotenv
 
 ## Results
 

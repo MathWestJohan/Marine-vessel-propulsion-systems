@@ -25,7 +25,7 @@ def _lay(**kw):
     return d
 
 
-def chart_decay_trend(df):
+def chart_decay_trend(df, maintenance_history=None):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df.index, y=df["comp_decay"], name="Compressor Decay",
@@ -35,11 +35,18 @@ def chart_decay_trend(df):
         x=df.index, y=df["turb_decay"], name="Turbine Decay",
         line=dict(color=AMBER, width=2), fill="tozeroy",
         fillcolor="rgba(245,158,11,0.06)"))
-    fig.add_hline(y=0.95, line_dash="dash", line_color=TEAL,
-                  annotation_text="Healthy", annotation_font_color=TEAL,
-                  annotation_font_size=10)
-    fig.add_hline(y=0.90, line_dash="dash", line_color=RED,
-                  annotation_text="Critical", annotation_font_color=RED,
+    
+    # Add maintenance event markers
+    if maintenance_history:
+        for event in maintenance_history:
+            idx = event['sample_index']
+            if idx in df.index:
+                fig.add_vline(x=idx, line_dash="dot", line_color=TEAL, line_width=1.5)
+                fig.add_annotation(x=idx, y=1.01, text="Maint", showarrow=False, 
+                                 font=dict(color=TEAL, size=9), textangle=-90)
+
+    fig.add_hline(y=0.975, line_dash="dash", line_color=TEAL,
+                  annotation_text="Maintenance Limit", annotation_font_color=TEAL,
                   annotation_font_size=10)
     y_min = min(df["comp_decay"].min(), df["turb_decay"].min()) - 0.01
     y_max = max(df["comp_decay"].max(), df["turb_decay"].max()) + 0.01

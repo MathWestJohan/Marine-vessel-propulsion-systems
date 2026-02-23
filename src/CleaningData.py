@@ -15,6 +15,10 @@ def load_and_clean_data(file_path='Data/data.csv'):
 
     df = pd.read_csv(file_path)
 
+    # Reverse the dataframe so degradation progresses from index 0 (1.0) onwards.
+    # The original CSV is ordered 0.95 -> 1.0, which is backwards for time-series analysis.
+    df = df.iloc[::-1].reset_index(drop=True)
+
     # Sanitize headers for XGBoost compatibility
     df.columns = df.columns.str.strip().str.replace('[', '(', regex=False).str.replace(']', ')',
                                                                                        regex=False).str.replace('<',

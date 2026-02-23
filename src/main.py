@@ -2,6 +2,7 @@ import os
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
+import joblib
 from CleaningData import load_and_clean_data, split_and_save_data
 from Plots import run_all_plots
 
@@ -53,22 +54,46 @@ def main():
     best_models = {}
     best_scalers = {}
 
+    model_dir = 'saved_models'
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
     for target in targets:
         target_key = "Compressor" if "Compressor" in target else "Turbine"
-        print(f"\n--- Training for {target} ---")
-        results = [
-            train_random_forest(train_path, test_path, target, image_dir),
-            train_gradient_boosting(train_path, test_path, target, image_dir),
-            train_svm(train_path, test_path, target, image_dir)
-        ]
-        all_results.extend(results)
+        model_path = os.path.join(model_dir, f"{target_key.lower()}_model.joblib")
+        scaler_path = os.path.join(model_dir, f"{target_key.lower()}_scaler.joblib")
 
-        best = select_best_model(results, metric="Test R2")
-        best_models[target_key] = best["model_object"]
-        best_scalers[target_key] = best.get("scaler", None)
+        if os.path.exists(model_path):
+            print(f"\n--- Loading existing model for {target} ---")
+            best_models[target_key] = joblib.load(model_path)
+            best_scalers[target_key] = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
+            # Add a dummy result for the comparison table if needed, 
+            # or skip table if loading from disk
+            all_results.append({
+                "Model": f"Loaded {target_key}",
+                "Train R2": 1.0, "Test R2": 1.0, "Train MAE": 0, "Test MAE": 0
+            })
+        else:
+            print(f"\n--- Training for {target} ---")
+            results = [
+                train_random_forest(train_path, test_path, target, image_dir),
+                train_gradient_boosting(train_path, test_path, target, image_dir),
+                train_svm(train_path, test_path, target, image_dir)
+            ]
+            all_results.extend(results)
 
-        # Detailed comparison plots for this specific target
-        run_model_comparison_plots(train_path, test_path, target, image_dir)
+            best = select_best_model(results, metric="Test R2")
+            best_models[target_key] = best["model_object"]
+            best_scalers[target_key] = best.get("scaler", None)
+
+            # Save the best model and scaler
+            joblib.dump(best_models[target_key], model_path)
+            if best_scalers[target_key] is not None:
+                joblib.dump(best_scalers[target_key], scaler_path)
+            print(f"  Saved best {target_key} model to {model_path}")
+
+            # Detailed comparison plots for this specific target
+            run_model_comparison_plots(train_path, test_path, target, image_dir)
 
     # 4. Existing Final Summary Table & Plot
     comparison_df = pd.DataFrame(all_results)

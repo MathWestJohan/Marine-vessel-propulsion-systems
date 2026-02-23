@@ -16,21 +16,32 @@ class PropulsionDigitalTwin:
         self.comp_scaler = comp_scaler
         self.turb_scaler = turb_scaler
         self.health_history = []
-        self.MAINTENANCE_THRESHOLD = 0.96
+        self.MAINTENANCE_THRESHOLD = 0.975 # Updated based on observed data
+        
+        # Cycle Tracking
+        self.maintenance_history = []
+        self.current_cycle_start_idx = 0
+        self.last_health = {"compressor": 1.0, "turbine": 1.0}
 
     def predict_health(self, input_data):
         """
         Predicts health from actual sensor readings.
-        input_data: DataFrame with feature columns matching training data
         """
-        if self.scaler:
-            input_scaled = self.scaler.transform(input_data)
+        # Ensure input is 2D
+        if len(input_data.shape) == 1:
+            input_data = input_data.values.reshape(1, -1)
         else:
-            input_scaled = input_data.values
+            input_data = input_data.values
+
+        X_comp = self.comp_scaler.transform(input_data) if self.comp_scaler else input_data
+        X_turb = self.turb_scaler.transform(input_data) if self.turb_scaler else input_data
             
-        comp_decay = self.compressor_model.predict(input_scaled)[0]
-        turb_decay = self.turbine_model.predict(input_scaled)[0]
+        comp_decay = float(self.compressor_model.predict(X_comp)[0])
+        turb_decay = float(self.turbine_model.predict(X_turb)[0])
         
+        # Detect Maintenance Events (Jumps)
+        self._detect_jumps(comp_decay, turb_decay)
+
         status = {
             "compressor_health": round(comp_decay, 4),
             "turbine_health": round(turb_decay, 4),
@@ -39,7 +50,30 @@ class PropulsionDigitalTwin:
         }
         
         self.health_history.append(status)
+        self.last_health = {"compressor": comp_decay, "turbine": turb_decay}
         return status
+
+    def _detect_jumps(self, current_comp, current_turb):
+        """Detect if health jumped back up (Maintenance Event)."""
+        # Using a threshold of +0.01 to identify a significant maintenance action
+        jump_threshold = 0.01 
+        
+        if (current_comp > self.last_health["compressor"] + jump_threshold) or \
+           (current_turb > self.last_health["turbine"] + jump_threshold):
+            
+            cycle_duration = len(self.health_history) - self.current_cycle_start_idx
+            
+            event = {
+                "type": "Maintenance Event Detected",
+                "sample_index": len(self.health_history),
+                "duration": cycle_duration,
+                "comp_recovery": round(current_comp, 4),
+                "turb_recovery": round(current_turb, 4),
+                "effectiveness": "Full" if current_comp > 0.99 else "Partial"
+            }
+            
+            self.maintenance_history.append(event)
+            self.current_cycle_start_idx = len(self.health_history)
 
     def get_maintenance_recommendation(self, status):
         """Logic for predictive maintenance."""
@@ -56,6 +90,50 @@ class PropulsionDigitalTwin:
         if not recommendations:
             recommendations.append("✅ All systems operating within normal parameters")
         return "\n".join(recommendations)
+
+    def run_what_if(self, base_data, adjustments):
+        """
+        Simulate a 'What-If' scenario.
+        base_data: A single row DataFrame/Series of current sensor data
+        adjustments: dict of {column_name: new_value}
+        """
+        sim_data = base_data.copy()
+        for col, val in adjustments.items():
+            if col in sim_data:
+                sim_data[col] = val
+        
+        # Ensure we have a DataFrame with correct columns for scaling/prediction
+        if isinstance(sim_data, pd.Series):
+            sim_df = pd.DataFrame([sim_data])
+        else:
+            sim_df = sim_data
+
+        # We need FEATURE_COLS usually defined in app.py. 
+        # For now, assume sim_df has them.
+        return self.predict_health(sim_df)
+
+    def diagnose_issues(self, df):
+        """
+        Identify which sensors are deviating most from expected baseline.
+        Simple Root Cause Analysis.
+        """
+        latest = df.iloc[-1]
+        # Basic logic: compare current readings to average of 'healthy' data (health > 0.99)
+        healthy_data = df[df["comp_decay"] > 0.99]
+        if len(healthy_data) < 5:
+            healthy_data = df.iloc[:10] # Fallback to start of dataset
+
+        baseline = healthy_data.mean()
+        deviations = {}
+        
+        # Check key sensors for deviation
+        key_sensors = ["t48", "t2", "p48", "p2", "fuel_flow"]
+        for s in key_sensors:
+            if s in latest and s in baseline:
+                diff_pct = (latest[s] - baseline[s]) / baseline[s] * 100
+                deviations[s] = diff_pct
+        
+        return deviations
 
 class KalmanFilter:
     """
@@ -106,12 +184,12 @@ def detect_faults(df, threshold_sigma=2.5):
         })
     return flags, metrics
 
-def estimate_remaining_life(slope, current, threshold=0.90):
+def estimate_remaining_life(slope, current, threshold=0.975):
     """
     Estimate remaining useful life based on linear degradation trend.
     slope: degradation rate per sample
     current: current health coefficient
-    threshold: health level at which maintenance is required
+    threshold: health level at which maintenance is required (default 0.975 based on data)
     """
     if slope >= 0:
         return "Stable" # No degradation or improving
