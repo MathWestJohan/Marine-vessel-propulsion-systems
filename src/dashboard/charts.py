@@ -4,7 +4,7 @@ from plotly.subplots import make_subplots
 
 from models.DigitalTwin import detect_faults
 from dashboard.components import (
-    BG, CARD, BORDER, TEXT, CYAN, TEAL, AMBER, RED, BLUE,
+    BG, CARD, BORDER, TEXT, DIM, CYAN, TEAL, AMBER, RED, BLUE,
 )
 
 PLOT_BASE = dict(
@@ -149,31 +149,61 @@ def chart_propulsion(df):
 
 
 def make_gauge(value, title, min_val=0.85, max_val=1.0):
-    if value >= 0.95:
+    CRITICAL_THRESHOLD = 0.975
+
+    if value >= CRITICAL_THRESHOLD:
         bar_color = TEAL
-    elif value >= 0.90:
-        bar_color = AMBER
+        status_text = "HEALTHY"
     else:
         bar_color = RED
+        status_text = "CRITICAL"
+
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
+        mode="gauge+number+delta",
         value=value,
-        number=dict(font=dict(size=36, color=TEXT), valueformat=".4f"),
-        title=dict(text=title, font=dict(size=13, color=TEXT)),
+        delta=dict(
+            reference=CRITICAL_THRESHOLD,
+            valueformat=".4f",
+            increasing=dict(color=TEAL),
+            decreasing=dict(color=RED),
+        ),
+        number=dict(
+            font=dict(size=34, color=bar_color, family="JetBrains Mono, monospace"),
+            valueformat=".4f",
+            suffix=f"  {status_text}",
+        ),
+        title=dict(
+            text=f"<b>{title}</b><br><span style='font-size:11px;color:{DIM}'>Decay State Coefficient</span>",
+            font=dict(size=14, color=TEXT),
+        ),
         gauge=dict(
-            axis=dict(range=[min_val, max_val], tickcolor=TEXT,
-                      tickfont=dict(size=10, color=TEXT)),
-            bar=dict(color=bar_color, thickness=0.55),
+            axis=dict(
+                range=[min_val, max_val],
+                tickcolor=DIM,
+                tickfont=dict(size=10, color=DIM),
+                tickformat=".3f",
+                nticks=6,
+            ),
+            bar=dict(color=bar_color, thickness=0.5),
             bgcolor=BORDER,
-            bordercolor=BORDER,
+            borderwidth=0,
             steps=[
-                dict(range=[min_val, 0.90], color="rgba(239,68,68,0.12)"),
-                dict(range=[0.90, 0.95], color="rgba(245,158,11,0.12)"),
-                dict(range=[0.95, max_val], color="rgba(45,212,191,0.12)"),
+                dict(range=[min_val, CRITICAL_THRESHOLD], color="rgba(239,68,68,0.10)"),
+                dict(range=[CRITICAL_THRESHOLD, max_val], color="rgba(45,212,191,0.10)"),
             ],
-            threshold=dict(line=dict(color=RED, width=2), thickness=0.8, value=0.90),
+            threshold=dict(
+                line=dict(color=AMBER, width=3),
+                thickness=0.85,
+                value=CRITICAL_THRESHOLD,
+            ),
         ),
     ))
-    fig.update_layout(paper_bgcolor=BG, plot_bgcolor=CARD, font=dict(color=TEXT),
-                      margin=dict(l=30, r=30, t=55, b=15), height=260)
+
+    fig.update_layout(
+        paper_bgcolor=BG,
+        plot_bgcolor=BG,
+        font=dict(color=TEXT, family="Inter, system-ui, sans-serif"),
+        margin=dict(l=30, r=30, t=80, b=20),
+        height=260,
+    )
     return fig

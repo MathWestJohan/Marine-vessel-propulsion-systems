@@ -7,14 +7,15 @@ import warnings
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 from dashboard.components import (
-    DIM, CYAN, sensor_html, health_html, efficiency_html,
+    DIM, CYAN, TEAL, RED, BORDER,
+    sensor_html, health_html, efficiency_html,
     get_css, header_html,
 )
 from dashboard.charts import (
     chart_decay_trend, chart_innovation, chart_fuel_efficiency,
     chart_temperatures, chart_pressures, chart_propulsion, make_gauge,
 )
-from dashboard.chatbot import respond, get_system_context
+from dashboard.chatbot import respond_streaming, get_system_context
 
 # Column mapping for raw CSV
 COL_MAP = {
@@ -208,67 +209,71 @@ def launch_dashboard(dt_instance=None, data_path=None):
         gr.HTML(header_html(len(RAW_DF)))
 
         with gr.Row():
-            with gr.Column(scale=3):
+            # ── LEFT SIDEBAR ── controls always visible while scrolling
+            with gr.Column(scale=1, min_width=220):
                 gr.HTML(f'<div class="section-label">Input Panel &mdash; Operating Conditions</div>')
-                with gr.Row():
-                    speed_dd = gr.Dropdown(
-                        choices=speed_choices, value="All",
-                        label="Ship Speed (knots)", interactive=True,
-                    )
-                    with gr.Column():
-                        gr.HTML(f'<div style="font-size:12px;color:{DIM};text-transform:uppercase;margin-bottom:4px;">TIC Range (%)</div>')
-                        with gr.Row():
-                            tic_min_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_min, label="Min", interactive=True)
-                            tic_max_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_max, label="Max", interactive=True)
+                speed_dd = gr.Dropdown(
+                    choices=speed_choices, value="All",
+                    label="Ship Speed (knots)", interactive=True,
+                )
+                gr.HTML(f'<div style="font-size:12px;color:{DIM};text-transform:uppercase;margin:8px 0 2px;">TIC Range (%)</div>')
+                tic_min_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_min, label="Min", interactive=True)
+                tic_max_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_max, label="Max", interactive=True)
                 apply_btn = gr.Button("Apply Filters & Refresh Predictions", variant="primary")
-            
-            with gr.Column(scale=2):
-                gr.HTML(f'<div class="section-label">Fault Simulation & Reporting</div>')
-                with gr.Row():
-                    fault_type = gr.Dropdown(
-                        choices=["None", "T48 Sensor Spike (+10%)", "P2 Pressure Drop (-10%)", "Fuel Leak (+5%)"],
-                        value="None", label="Inject Fault"
-                    )
-                    report_btn = gr.Button("Generate Report")
-                report_file = gr.File(label="Download Report", interactive=False)
 
-        gr.HTML(f'<div class="section-label">Sensor Reading Display &mdash; 14 Measured Parameters</div>')
-        sensor_out = gr.HTML()
+                gr.HTML(f'<hr style="border:none;border-top:1px solid #1e293b;margin:16px 0;"/>')
 
-        with gr.Tabs():
-            with gr.Tab("Health Monitoring"):
-                gr.HTML(f'<div class="section-label">Decay Coefficients &amp; Health Metrics</div>')
-                health_out = gr.HTML()
-                with gr.Row():
-                    comp_gauge = gr.Plot(label="Compressor Gauge")
-                    turb_gauge = gr.Plot(label="Turbine Gauge")
-                with gr.Row():
-                    decay_plot = gr.Plot(label="Degradation Trend")
-                    innov_plot = gr.Plot(label="Measurement Innovations")
+                gr.HTML(f'<div class="section-label">Fault Simulation &amp; Reporting</div>')
+                fault_type = gr.Dropdown(
+                    choices=["None", "T48 Sensor Spike (+10%)", "P2 Pressure Drop (-10%)", "Fuel Leak (+5%)"],
+                    value="None", label="Inject Fault"
+                )
+                report_btn = gr.Button("Generate Report")
+                report_status = gr.HTML(
+                    f'<div style="margin-top:6px;padding:10px;border:1px dashed {BORDER};border-radius:6px;'
+                    f'text-align:center;font-size:11px;color:{DIM};">No report generated yet</div>'
+                )
+                report_file = gr.File(label="Report Ready — Click to Download", interactive=False, visible=False)
 
-            with gr.Tab("Operational Efficiency"):
-                gr.HTML(f'<div class="section-label">Efficiency vs Baseline &amp; Fuel Consumption</div>')
-                eff_out = gr.HTML()
-                with gr.Row():
-                    fuel_plot = gr.Plot(label="Fuel Consumption Trend")
+            # ── MAIN CONTENT ──
+            with gr.Column(scale=4):
+                gr.HTML(f'<div class="section-label">Sensor Reading Display &mdash; 14 Measured Parameters</div>')
+                sensor_out = gr.HTML()
 
-            with gr.Tab("Sensor Trends"):
-                with gr.Row():
-                    temp_plot = gr.Plot(label="Temperature Profiles")
-                    press_plot = gr.Plot(label="Pressure Profiles")
-                with gr.Row():
-                    prop_plot = gr.Plot(label="Propeller Torque")
+                with gr.Tabs():
+                    with gr.Tab("Health Monitoring"):
+                        gr.HTML(f'<div class="section-label">Decay Coefficients &amp; Health Metrics</div>')
+                        health_out = gr.HTML()
+                        with gr.Row():
+                            comp_gauge = gr.Plot(label="Compressor Gauge")
+                            turb_gauge = gr.Plot(label="Turbine Gauge")
+                        with gr.Row():
+                            decay_plot = gr.Plot(label="Degradation Trend")
+                            innov_plot = gr.Plot(label="Measurement Innovations")
 
-            with gr.Tab("AI Assistant"):
-                gr.HTML(f'<div class="section-label">Digital Twin AI Assistant</div>')
-                chatbot = gr.Chatbot(label="Marine Advisor", height=500)
-                with gr.Row():
-                    msg = gr.Textbox(
-                        label="Ask about system health or maintenance...",
-                        placeholder="e.g., What is the current state of the compressor?",
-                        scale=4
-                    )
-                    clear = gr.Button("Clear Chat", scale=1)
+                    with gr.Tab("Operational Efficiency"):
+                        gr.HTML(f'<div class="section-label">Efficiency vs Baseline &amp; Fuel Consumption</div>')
+                        eff_out = gr.HTML()
+                        with gr.Row():
+                            fuel_plot = gr.Plot(label="Fuel Consumption Trend")
+
+                    with gr.Tab("Sensor Trends"):
+                        with gr.Row():
+                            temp_plot = gr.Plot(label="Temperature Profiles")
+                            press_plot = gr.Plot(label="Pressure Profiles")
+                        with gr.Row():
+                            prop_plot = gr.Plot(label="Propeller Torque")
+
+                    with gr.Tab("AI Assistant"):
+                        gr.HTML(f'<div class="section-label">Digital Twin AI Assistant</div>')
+                        chatbot = gr.Chatbot(label="Marine Advisor", height=500)
+                        with gr.Row():
+                            msg = gr.Textbox(
+                                label="Ask about system health or maintenance...",
+                                placeholder="e.g., What is the current state of the compressor?",
+                                scale=4
+                            )
+                            clear = gr.Button("Clear Chat", scale=1)
 
         outputs = [
             sensor_out, health_out, eff_out,
@@ -288,16 +293,37 @@ def launch_dashboard(dt_instance=None, data_path=None):
         def chat_wrapper(message, history, df):
             if history is None:
                 history = []
-            return respond(message, history, df, dt_twin=dt_instance)
+            if not message or not message.strip():
+                yield history, ""
+                return
+            partial_history = list(history) + [{"role": "user", "content": message}]
+            yield partial_history, ""   # show user message + clear input immediately
+            for partial in respond_streaming(message, history, df, dt_twin=dt_instance):
+                yield partial_history + [{"role": "assistant", "content": partial}], ""
 
         fault_type.change(handle_fault, fault_type, fault_offsets).then(
             fn=update_all, inputs=inputs, outputs=outputs
         )
-        
-        report_btn.click(lambda df: generate_report(df, dt_instance), current_df, report_file)
 
-        msg.submit(chat_wrapper, [msg, chatbot, current_df], [chatbot])
-        msg.submit(lambda: "", None, [msg])
+        def handle_report(df):
+            path = generate_report(df, dt_instance)
+            if path:
+                status = (
+                    f'<div style="margin-top:6px;padding:10px;border:1px solid {TEAL}44;border-radius:6px;'
+                    f'background:{TEAL}11;text-align:center;font-size:11px;color:{TEAL};font-weight:600;">'
+                    f'Report ready &mdash; use the file below to download</div>'
+                )
+                return gr.update(value=status), gr.update(value=path, visible=True)
+            status = (
+                f'<div style="margin-top:6px;padding:10px;border:1px solid {RED}44;border-radius:6px;'
+                f'background:{RED}11;text-align:center;font-size:11px;color:{RED};">'
+                f'Report generation failed</div>'
+            )
+            return gr.update(value=status), gr.update(visible=False)
+
+        report_btn.click(handle_report, current_df, [report_status, report_file])
+
+        msg.submit(chat_wrapper, [msg, chatbot, current_df], [chatbot, msg])
         clear.click(lambda: [], None, chatbot, queue=False)
 
         apply_btn.click(fn=update_all, inputs=inputs, outputs=outputs)

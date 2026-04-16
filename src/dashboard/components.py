@@ -27,11 +27,9 @@ def _badge(label, color):
     return f'<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:{color}22;color:{color};border:1px solid {color}44;">{label}</span>'
 
 
-def _status_color(val, warn=0.95, crit=0.90):
-    if val >= warn:
+def _status_color(val, threshold=0.975):
+    if val >= threshold:
         return TEAL, "HEALTHY"
-    if val >= crit:
-        return AMBER, "WARNING"
     return RED, "CRITICAL"
 
 
