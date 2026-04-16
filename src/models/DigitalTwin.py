@@ -79,38 +79,17 @@ class PropulsionDigitalTwin:
         """Logic for predictive maintenance."""
         recommendations = []
         if status["comp_alert"]:
-            recommendations.append("⚠️ COMPRESSOR MAINTENANCE REQUIRED - Efficiency below 96%")
+            recommendations.append(" COMPRESSOR MAINTENANCE REQUIRED - Efficiency below 96%")
             recommendations.append("   → Schedule compressor inspection")
             recommendations.append("   → Check for fouling or erosion")
         if status["turb_alert"]:
-            recommendations.append("⚠️ TURBINE MAINTENANCE REQUIRED - Efficiency below 96%")
+            recommendations.append(" TURBINE MAINTENANCE REQUIRED - Efficiency below 96%")
             recommendations.append("   → Schedule turbine blade inspection")
             recommendations.append("   → Check for thermal degradation")
 
         if not recommendations:
-            recommendations.append("✅ All systems operating within normal parameters")
+            recommendations.append(" All systems operating within normal parameters")
         return "\n".join(recommendations)
-
-    def run_what_if(self, base_data, adjustments):
-        """
-        Simulate a 'What-If' scenario.
-        base_data: A single row DataFrame/Series of current sensor data
-        adjustments: dict of {column_name: new_value}
-        """
-        sim_data = base_data.copy()
-        for col, val in adjustments.items():
-            if col in sim_data:
-                sim_data[col] = val
-        
-        # Ensure we have a DataFrame with correct columns for scaling/prediction
-        if isinstance(sim_data, pd.Series):
-            sim_df = pd.DataFrame([sim_data])
-        else:
-            sim_df = sim_data
-
-        # We need FEATURE_COLS usually defined in app.py. 
-        # For now, assume sim_df has them.
-        return self.predict_health(sim_df)
 
     def diagnose_issues(self, df):
         """
@@ -134,14 +113,7 @@ class PropulsionDigitalTwin:
                 deviations[s] = diff_pct
         
         return deviations
-
-class KalmanFilter:
-    """
-    A univariate (1D) state-space Kalman filter for tracking decay coefficients.
-    """
     
-    pass
-
 def compute_kalman_metrics(df):
     """
     Compute psuedo-Kalman innovation metrics from the dataset.
