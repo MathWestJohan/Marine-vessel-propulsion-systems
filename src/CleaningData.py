@@ -15,6 +15,10 @@ def load_and_clean_data(file_path='Data/data.csv'):
 
     df = pd.read_csv(file_path)
 
+    # Reverse the dataframe so degradation progresses from index 0 (1.0) onwards.
+    # The original CSV is ordered 0.95 -> 1.0, which is backwards for time-series analysis.
+    df = df.iloc[::-1].reset_index(drop=True)
+
     # Sanitize headers for XGBoost compatibility
     df.columns = df.columns.str.strip().str.replace('[', '(', regex=False).str.replace(']', ')',
                                                                                        regex=False).str.replace('<',
@@ -37,7 +41,7 @@ def split_and_save_data(df, data_folder='Data'):
         data_folder = os.path.join('..', data_folder)
 
     # Perform the split
-    train_df, test_df = train_test_split(df, test_size=0.70, random_state=42)
+    train_df, test_df = train_test_split(df, test_size=0.20, random_state=42)
 
     # Define file paths
     train_path = os.path.join(data_folder, 'train.csv')
