@@ -41,7 +41,7 @@ def split_and_save_data(df, data_folder='Data'):
         data_folder = os.path.join('..', data_folder)
 
     # Perform the split
-    train_df, test_df = train_test_split(df, test_size=0.70, random_state=42)
+    train_df, test_df = train_test_split(df, test_size=0.20, random_state=42)
 
     # Define file paths
     train_path = os.path.join(data_folder, 'train.csv')
