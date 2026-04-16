@@ -52,11 +52,6 @@ def sensor_html(df):
         ("Fuel Flow", f'{latest["fuel_flow"]:.4f}', "kg/s", AMBER),
         ("Ship Speed (response)", f'{latest["ship_speed"]:.0f}', "knots", CYAN),
     ]
-    if "t1" in df.columns:
-        sensors.insert(6, ("Compressor Inlet Temp", f'{latest["t1"]:.1f}', "\u00b0C", AMBER))
-    if "p1" in df.columns:
-        sensors.insert(9, ("Compressor Inlet Press.", f'{latest["p1"]:.3f}', "bar", TEAL))
-    
     html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">'
     for t, v, u, c in sensors:
         html += _card(t, v, u, c)

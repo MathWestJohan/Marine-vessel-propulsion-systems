@@ -15,7 +15,7 @@ from dashboard.charts import (
     chart_decay_trend, chart_innovation, chart_fuel_efficiency,
     chart_temperatures, chart_pressures, chart_propulsion, make_gauge,
 )
-from dashboard.chatbot import respond_streaming, get_system_context
+from dashboard.chatbot import respond_streaming, get_system_context, respond, warmup_model, clear_chat_snapshot_cache
 
 # Column mapping for raw CSV
 COL_MAP = {
@@ -115,16 +115,21 @@ def generate_report(df, dt_instance):
     if df is None:
         return None
     context = get_system_context(df, dt_instance)
+    ai_reply = respond(
+        "Summarise the current system status and give maintenance recommendations.",
+        [],
+        df,
+        dt_twin=dt_instance,
+    )
+    # respond() returns the updated history list; extract the assistant message
+    assistant_text = ai_reply[-1]["content"] if ai_reply else "No response generated."
     report_path = "maintenance_report.txt"
     with open(report_path, "w") as f:
-        f.write("=== MARINE PROPULSION MAINTENANCE REPORT ===\n")
+        f.write("=== MARINE PROPULSION MAINTENANCE REPORT ===\n\n")
+        f.write("--- System Snapshot ---\n")
         f.write(context)
-        f.write("\nRECOMMENDATION:\n")
-        status = {
-            "comp_alert": df["comp_decay"].mean() < 0.975,
-            "turb_alert": df["turb_decay"].mean() < 0.975
-        }
-        f.write(dt_instance.get_maintenance_recommendation(status))
+        f.write("\n\n--- AI Recommendation ---\n")
+        f.write(assistant_text)
     return report_path
 
 def launch_dashboard(dt_instance=None, data_path=None):
@@ -324,7 +329,7 @@ def launch_dashboard(dt_instance=None, data_path=None):
         report_btn.click(handle_report, current_df, [report_status, report_file])
 
         msg.submit(chat_wrapper, [msg, chatbot, current_df], [chatbot, msg])
-        clear.click(lambda: [], None, chatbot, queue=False)
+        clear.click(lambda: [], None, chatbot, queue=False).then(clear_chat_snapshot_cache)
 
         apply_btn.click(fn=update_all, inputs=inputs, outputs=outputs)
         speed_dd.change(fn=update_all, inputs=inputs, outputs=outputs)
@@ -334,5 +339,7 @@ def launch_dashboard(dt_instance=None, data_path=None):
 
         print("\n--- Launching Digital Twin Dashboard ---")
         print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
+        _, msg = warmup_model()
+        print(f" Chat model warmup: {msg}")
         demo.launch(server_name="127.0.0.1", server_port=7860, css=get_css())
     
