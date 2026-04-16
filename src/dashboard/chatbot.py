@@ -342,7 +342,7 @@ def _build_system_prompt(snapshot):
         "Use only the provided snapshot. "
         "If the user asks for something not in the snapshot, say what is missing. "
         "Prefer actionable recommendations. "
-        "Use the dashboard threshold semantics: HEALTHY >= 0.95, WARNING 0.90-0.95, CRITICAL < 0.90.\n\n"
+        "Use the dashboard threshold semantics: HEALTHY >= 0.975, CRITICAL < 0.975.\n\n"
         f"{context}"
     )
 

@@ -70,7 +70,9 @@ def health_html(df, dt_instance=None, source_label="CSV-based"):
     comp_std = df["comp_decay"].std()
     turb_std = df["turb_decay"].std()
 
-    faults, _metrics = detect_faults(df)
+    faults, kalman_metrics = detect_faults(df)
+    comp_mean_innov = kalman_metrics["Compressor"]["mean_innov"]
+    turb_mean_innov = kalman_metrics["Turbine"]["mean_innov"]
     comp_f = next((f for f in faults if f["component"] == "Compressor"), {"n_faults": 0, "pct": 0.0})
     turb_f = next((f for f in faults if f["component"] == "Turbine"), {"n_faults": 0, "pct": 0.0})
     n_faults_comp = comp_f["n_faults"]
@@ -88,7 +90,7 @@ def health_html(df, dt_instance=None, source_label="CSV-based"):
             </div>
             <div style="font-size:36px;font-weight:700;color:{cc};font-family:'JetBrains Mono',monospace;">{comp_val:.4f}</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:{DIM};">
-                <div>Innovation σ: <span style="color:{TEXT};">{comp_std:.6f}</span></div>
+                <div>Innovation σ: <span style="color:{TEXT};">{comp_mean_innov:.6f}</span></div>
                 <div>Std: <span style="color:{TEXT};">{comp_std:.6f}</span></div>
                 <div>Fault Flags: <span style="color:{RED if n_faults_comp > 0 else TEAL};">{n_faults_comp} ({comp_f['pct']:.1f}%)</span></div>
                 <div>Est. Maintenance: <span style="color:{AMBER};">{comp_maint}</span></div>
@@ -102,7 +104,7 @@ def health_html(df, dt_instance=None, source_label="CSV-based"):
             </div>
             <div style="font-size:36px;font-weight:700;color:{tc};font-family:'JetBrains Mono',monospace;">{turb_val:.4f}</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:{DIM};">
-                <div>Innovation σ: <span style="color:{TEXT};">{turb_std:.6f}</span></div>
+                <div>Innovation σ: <span style="color:{TEXT};">{turb_mean_innov:.6f}</span></div>
                 <div>Std: <span style="color:{TEXT};">{turb_std:.6f}</span></div>
                 <div>Fault Flags: <span style="color:{RED if n_faults_turb > 0 else TEAL};">{n_faults_turb} ({turb_f['pct']:.1f}%)</span></div>
                 <div>Est. Maintenance: <span style="color:{AMBER};">{turb_maint}</span></div>

@@ -67,12 +67,7 @@ def main():
             print(f"\n--- Loading existing model for {target} ---")
             best_models[target_key] = joblib.load(model_path)
             best_scalers[target_key] = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
-            # Add a dummy result for the comparison table if needed, 
-            # or skip table if loading from disk
-            all_results.append({
-                "Model": f"Loaded {target_key}",
-                "Train R2": 1.0, "Test R2": 1.0, "Train MAE": 0, "Test MAE": 0
-            })
+            # Model loaded from disk — no training metrics available, skip chart entry.
         else:
             print(f"\n--- Training for {target} ---")
             results = [
@@ -96,14 +91,17 @@ def main():
             run_model_comparison_plots(train_path, test_path, target, image_dir)
 
     # 4. Existing Final Summary Table & Plot
-    comparison_df = pd.DataFrame(all_results)
-    print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object', 'scaler'], errors='ignore'))
+    if all_results:
+        comparison_df = pd.DataFrame(all_results)
+        print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object', 'scaler'], errors='ignore'))
 
-    comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(12, 6))
-    plt.title('Overall R2 Score Comparison')
-    plt.ylabel('R2 Score')
-    plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'))
-    plt.show()
+        comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(12, 6))
+        plt.title('Overall R2 Score Comparison')
+        plt.ylabel('R2 Score')
+        plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'))
+        plt.show()
+    else:
+        print("\nAll models loaded from disk — skipping R² comparison chart.")
 
     # 5. Digital Twin & Predictive Maintenance Dashboard
     print("\n--- Launching Digital Twin Dashboard ---")
