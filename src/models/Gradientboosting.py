@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.model_selection import cross_val_score
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 
@@ -38,6 +39,8 @@ def train_gradient_boosting(train_path, test_path, target_col, image_dir=None):
 
     model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
     model.fit(X_train, y_train)
+    
+    cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2')
 
     target_name = "Compressor" if "Compressor" in target_col else "Turbine"
 

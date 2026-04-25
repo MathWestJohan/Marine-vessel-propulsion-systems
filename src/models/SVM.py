@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.model_selection import cross_val_score
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error, r2_score
@@ -26,7 +27,7 @@ def train_svm(train_path, test_path, target_col, image_dir=None):
     Note:
         - The function drops 'GT Compressor decay state coefficient' and 
           'GT Turbine decay state coefficient' columns before training.
-        - Uses RBF kernel with C=1.0 and epsilon=0.01 hyperparameters.
+        - Uses RBF kernel with C=10.0 and epsilon=0.0001.
         - Features are standardized using StandardScaler.
     """
     train_df, test_df = pd.read_csv(train_path), pd.read_csv(test_path)
@@ -44,6 +45,8 @@ def train_svm(train_path, test_path, target_col, image_dir=None):
 
     model = SVR(kernel='rbf', C=10.0, epsilon=0.0001)
     model.fit(X_train_scaled, y_train)
+    
+    cv_scores = cross_val_score(model, X_test_scaled, y_train, cv=5, scoring='r2')
 
     target_name = "Compressor" if "Compressor" in target_col else "Turbine"
 

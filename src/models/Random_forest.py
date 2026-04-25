@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import cross_val_score
 
 def train_random_forest(train_path, test_path, target_col, image_dir=None):
     """
@@ -40,6 +41,8 @@ def train_random_forest(train_path, test_path, target_col, image_dir=None):
 
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
+    
+    cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2')
 
     target_name = "Compressor" if "Compressor" in target_col else "Turbine"
 
