@@ -1,6 +1,16 @@
 import pandas as pd
 import numpy as np
 
+DEFAULT_SENSOR_COLS = {
+    "comp_decay": "comp_decay",
+    "turb_decay": "turb_decay",
+    "t48": "t48",
+    "t2": "t2",
+    "p48": "p48",
+    "p2": "p2",
+    "fuel_flow": "fuel_flow"
+}
+
 
 class PropulsionDigitalTwin:
     """
@@ -79,39 +89,47 @@ class PropulsionDigitalTwin:
         """Logic for predictive maintenance."""
         recommendations = []
         if status["comp_alert"]:
-            recommendations.append(" COMPRESSOR MAINTENANCE REQUIRED - Efficiency below 96%")
+            recommendations.append(" COMPRESSOR MAINTENANCE REQUIRED - Efficiency below threshold")
             recommendations.append("   → Schedule compressor inspection")
             recommendations.append("   → Check for fouling or erosion")
         if status["turb_alert"]:
-            recommendations.append(" TURBINE MAINTENANCE REQUIRED - Efficiency below 96%")
+            recommendations.append(" TURBINE MAINTENANCE REQUIRED - Efficiency below threshold")
             recommendations.append("   → Schedule turbine blade inspection")
             recommendations.append("   → Check for thermal degradation")
-
+ 
         if not recommendations:
             recommendations.append(" All systems operating within normal parameters")
         return "\n".join(recommendations)
 
-    def diagnose_issues(self, df):
+    def diagnose_issues(self, df, sensor_cols=None):
         """
-        Identify which sensors are deviating most from expected baseline.
-        Simple Root Cause Analysis.
+        Identify which sensors are deviating most from the expected baseline.
+        Simple root cause analysis.
         """
+        if sensor_cols is None:
+            sensor_cols = DEFAULT_SENSOR_COLS
+ 
+        comp_col = sensor_cols.get("comp_decay", "comp_decay")
+        if comp_col not in df.columns:
+            return {}
+ 
         latest = df.iloc[-1]
-        # Basic logic: compare current readings to average of 'healthy' data (health > 0.99)
-        healthy_data = df[df["comp_decay"] > 0.99]
+ 
+        # Baseline: average of "healthy" readings (health > 0.99)
+        healthy_data = df[df[comp_col] > 0.99]
         if len(healthy_data) < 5:
-            healthy_data = df.iloc[:10] # Fallback to start of dataset
-
+            healthy_data = df.iloc[:10]  # fallback to start of dataset
+ 
         baseline = healthy_data.mean()
         deviations = {}
-        
-        # Check key sensors for deviation
+ 
         key_sensors = ["t48", "t2", "p48", "p2", "fuel_flow"]
-        for s in key_sensors:
-            if s in latest and s in baseline:
-                diff_pct = (latest[s] - baseline[s]) / baseline[s] * 100
-                deviations[s] = diff_pct
-        
+        for logical_name in key_sensors:
+            col = sensor_cols.get(logical_name, logical_name)
+            if col in latest.index and col in baseline.index and baseline[col] != 0:
+                diff_pct = (latest[col] - baseline[col]) / baseline[col] * 100
+                deviations[logical_name] = diff_pct
+ 
         return deviations
     
 def compute_kalman_metrics(df):
