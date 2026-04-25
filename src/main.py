@@ -34,7 +34,7 @@ def select_best_model(results, metric="Test R2"):
 
 
 def main():
-    # 1. Existing Data Setup
+    # 1. Data setup
     df = load_and_clean_data()
     split_and_save_data(df)
 
@@ -45,10 +45,13 @@ def main():
         train_path, test_path = 'Data/train.csv', 'Data/test.csv'
         image_dir = 'images'
 
-    # 2. Existing EDA Plots
+    if not os.path.exists(image_dir):
+        os.makedirs(image_dir)
+
+    # 2. EDA plots
     run_all_plots(df, image_dir)
 
-    # 3. Model Training and Comparison
+    # 3. Model training and comparison
     targets = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
     all_results = []
     best_models = {}
@@ -67,13 +70,12 @@ def main():
             print(f"\n--- Loading existing model for {target} ---")
             best_models[target_key] = joblib.load(model_path)
             best_scalers[target_key] = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
-            # Model loaded from disk — no training metrics available, skip chart entry.
         else:
             print(f"\n--- Training for {target} ---")
             results = [
                 train_random_forest(train_path, test_path, target, image_dir),
                 train_gradient_boosting(train_path, test_path, target, image_dir),
-                train_svm(train_path, test_path, target, image_dir)
+                train_svm(train_path, test_path, target, image_dir),
             ]
             all_results.extend(results)
 
@@ -87,30 +89,91 @@ def main():
                 joblib.dump(best_scalers[target_key], scaler_path)
             print(f"  Saved best {target_key} model to {model_path}")
 
-            # Detailed comparison plots for this specific target
-            run_model_comparison_plots(train_path, test_path, target, image_dir)
+            # Pass the already-trained models to the comparison plots
+            # so they don't retrain from scratch
+            trained_models_for_plots = {}
+            for r in results:
+                trained_models_for_plots[r["Model"].split(" (")[0]] = (
+                    r["model_object"],
+                    r.get("scaler", None),
+                )
+            run_model_comparison_plots(
+                train_path, test_path, target, image_dir,
+                trained_models=trained_models_for_plots,
+            )
 
-    # 4. Existing Final Summary Table & Plot
+    # 4. Summary table, CSV export, and comparison plot
     if all_results:
         comparison_df = pd.DataFrame(all_results)
-        print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object', 'scaler'], errors='ignore'))
 
+        # Drop non-metric columns for display
+        display_cols = [c for c in comparison_df.columns if c not in ['model_object', 'scaler']]
+        display_df = comparison_df[display_cols]
+
+        print("\nFinal Model Comparison Table:")
+        print(display_df.to_string(index=False))
+
+        # Save to CSV for the report
+        csv_path = os.path.join(image_dir, 'model_comparison.csv')
+        display_df.to_csv(csv_path, index=False)
+        print(f"\nSaved comparison table to: {csv_path}")
+
+        # Save as a matplotlib table figure
+        fig, ax = plt.subplots(figsize=(14, 4))
+        ax.axis('off')
+        table_data = display_df.round(6)
+        table = ax.table(
+            cellText=table_data.values,
+            colLabels=table_data.columns,
+            cellLoc='center',
+            loc='center',
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1.2, 1.5)
+        plt.title('Model Performance Comparison', fontsize=14, pad=20)
+        plt.tight_layout()
+        table_path = os.path.join(image_dir, 'model_comparison_table.png')
+        plt.savefig(table_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"Saved comparison table figure to: {table_path}")
+
+        # R² bar chart
         comparison_df.set_index('Model')[['Train R2', 'Test R2']].plot(kind='bar', figsize=(12, 6))
-        plt.title('Overall R2 Score Comparison')
-        plt.ylabel('R2 Score')
-        plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'))
-        plt.show()
+        plt.title('Overall R² Score Comparison')
+        plt.ylabel('R² Score')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.savefig(os.path.join(image_dir, 'overall_r2_comparison.png'), dpi=150)
+        plt.close()
+
+        # Cross-validation bar chart (if CV data available)
+        if 'CV R2 Mean' in comparison_df.columns:
+            fig, ax = plt.subplots(figsize=(12, 6))
+            x = range(len(comparison_df))
+            bars = ax.bar(x, comparison_df['CV R2 Mean'],
+                          yerr=comparison_df['CV R2 Std'], capsize=5,
+                          color=['tab:blue', 'tab:orange', 'tab:green'] * 2)
+            ax.set_xticks(x)
+            ax.set_xticklabels(comparison_df['Model'], rotation=45, ha='right')
+            ax.set_ylabel('R² Score')
+            ax.set_title('5-Fold Cross-Validation R² (mean ± std)')
+            ax.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.tight_layout()
+            plt.savefig(os.path.join(image_dir, 'cross_validation_r2.png'), dpi=150)
+            plt.close()
+            print(f"Saved cross-validation plot to: {os.path.join(image_dir, 'cross_validation_r2.png')}")
     else:
         print("\nAll models loaded from disk — skipping R² comparison chart.")
 
-    # 5. Digital Twin & Predictive Maintenance Dashboard
+    # 5. Digital Twin & Dashboard
     print("\n--- Launching Digital Twin Dashboard ---")
     print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
     dt_twin = PropulsionDigitalTwin(
         compressor_model=best_models["Compressor"],
         turbine_model=best_models["Turbine"],
         comp_scaler=best_scalers["Compressor"],
-        turb_scaler=best_scalers["Turbine"]
+        turb_scaler=best_scalers["Turbine"],
     )
     launch_dashboard(dt_twin)
 
