@@ -1,209 +1,142 @@
-import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import numpy as np
 
-from models.DigitalTwin import detect_faults
-from dashboard.components import (
-    BG, CARD, BORDER, TEXT, DIM, CYAN, TEAL, AMBER, RED, BLUE,
-)
+# Use theme tokens from components
+from .components import BG_COLOR, CARD_COLOR, BORDER_COLOR, TEXT_PRIMARY, TEXT_DIM, ACCENT_CYAN, ACCENT_AMBER, ACCENT_TEAL
 
-PLOT_BASE = dict(
-    paper_bgcolor=BG,
-    plot_bgcolor=CARD,
-    font=dict(color=TEXT, family="Inter, system-ui, sans-serif", size=12),
-    margin=dict(l=50, r=20, t=40, b=35),
-    xaxis=dict(gridcolor=BORDER, zeroline=False),
-    yaxis=dict(gridcolor=BORDER, zeroline=False),
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
-    hovermode="x unified",
-)
-
-
-def _lay(**kw):
-    d = {**PLOT_BASE}
-    d.update(kw)
-    return d
-
-
-def chart_decay_trend(df, maintenance_history=None):
+def create_main_trend_chart(df, turbine_events, comp_threshold=0.95, turb_threshold=0.975):
+    """
+    Creates a shared trend chart showing Turbine Sawtooth and Compressor Long Decline.
+    """
     fig = go.Figure()
+
+    # Compressor Line (Long Decline)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df["comp_decay"], name="Compressor Decay",
-        line=dict(color=CYAN, width=2), fill="tozeroy",
-        fillcolor="rgba(6,182,212,0.06)"))
+        x=df.index, y=df['comp_decay'],
+        name="Compressor (Single Cycle)",
+        line=dict(color=ACCENT_CYAN, width=3),
+        hovertemplate="Sample: %{x}<br>Health: %{y:.4f}"
+    ))
+
+    # Turbine Line (Sawtooth)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df["turb_decay"], name="Turbine Decay",
-        line=dict(color=AMBER, width=2), fill="tozeroy",
-        fillcolor="rgba(245,158,11,0.06)"))
+        x=df.index, y=df['turb_decay'],
+        name="Gas Turbine (Sawtooth)",
+        line=dict(color=ACCENT_AMBER, width=2),
+        hovertemplate="Sample: %{x}<br>Health: %{y:.4f}"
+    ))
+
+    # Add Maintenance Thresholds
+    fig.add_hline(y=turb_threshold, line_dash="dash", line_color=ACCENT_AMBER, 
+                  annotation_text="GT Maint. Threshold", annotation_position="top left",
+                  annotation_font_color=ACCENT_AMBER)
     
-    # Add maintenance event markers
-    if maintenance_history:
-        for event in maintenance_history:
-            idx = event['sample_index']
-            if idx in df.index:
-                fig.add_vline(x=idx, line_dash="dot", line_color=TEAL, line_width=1.5)
-                fig.add_annotation(x=idx, y=1.01, text="Maint", showarrow=False, 
-                                 font=dict(color=TEAL, size=9), textangle=-90)
+    fig.add_hline(y=comp_threshold, line_dash="dash", line_color=ACCENT_CYAN,
+                  annotation_text="Comp Maint. Threshold", annotation_position="bottom left",
+                  annotation_font_color=ACCENT_CYAN)
 
-    fig.add_hline(y=0.975, line_dash="dash", line_color=TEAL,
-                  annotation_text="Maintenance Limit", annotation_font_color=TEAL,
-                  annotation_font_size=10)
-    y_min = min(df["comp_decay"].min(), df["turb_decay"].min()) - 0.01
-    y_max = max(df["comp_decay"].max(), df["turb_decay"].max()) + 0.01
-    fig.update_layout(**_lay(title="Degradation Trend", height=340,
-                             yaxis=dict(gridcolor=BORDER, title="Coefficient",
-                                        range=[y_min, y_max])))
-    fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
+    # Mark Turbine Maintenance Events (The "Sawtooth" jumps)
+    for event_idx in turbine_events:
+        fig.add_vline(x=event_idx, line_width=1, line_dash="dot", line_color=ACCENT_TEAL)
+        fig.add_annotation(x=event_idx, y=1.01, text="GT MAINT", showarrow=False, 
+                         font=dict(color=ACCENT_TEAL, size=10), textangle=-90)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=BG_COLOR,
+        plot_bgcolor=CARD_COLOR,
+        font=dict(color=TEXT_PRIMARY),
+        margin=dict(l=40, r=20, t=40, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(gridcolor=BORDER_COLOR, title="Operational Time (Samples)"),
+        yaxis=dict(gridcolor=BORDER_COLOR, title="Health Coefficient", range=[0.94, 1.02]),
+        hovermode="x unified"
+    )
     return fig
 
-
-def chart_innovation(df):
-    _, metrics = detect_faults(df)
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-                        subplot_titles=["Compressor Innovations", "Turbine Innovations"])
-    for i, label in enumerate(["Compressor", "Turbine"], 1):
-        innov = metrics[label]["innovations"]
-        sigma = metrics[label]["std_innov"]
-        color = CYAN if i == 1 else AMBER
-        fig.add_trace(go.Scatter(
-            x=list(range(len(innov))), y=innov, name=f"{label} Innovation",
-            line=dict(color=color, width=1), fill="tozeroy",
-            fillcolor=f"rgba({','.join(str(int(color.lstrip('#')[j:j+2], 16)) for j in (0, 2, 4))},0.06)"),
-            row=i, col=1)
-        fig.add_hline(y=2.5 * sigma, line_dash="dot", line_color=RED,
-                      annotation_text="+2.5\u03c3", annotation_font_color=RED,
-                      annotation_font_size=9, row=i, col=1)
-        fig.add_hline(y=-2.5 * sigma, line_dash="dot", line_color=RED,
-                      annotation_text="-2.5\u03c3", annotation_font_color=RED,
-                      annotation_font_size=9, row=i, col=1)
-    fig.update_layout(paper_bgcolor=BG, plot_bgcolor=CARD,
-                      font=dict(color=TEXT, size=11), height=400,
-                      margin=dict(l=50, r=20, t=40, b=30),
-                      legend=dict(bgcolor="rgba(0,0,0,0)"), hovermode="x unified",
-                      showlegend=False)
-    fig.update_xaxes(gridcolor=BORDER)
-    fig.update_yaxes(gridcolor=BORDER)
-    return fig
-
-
-def chart_fuel_efficiency(df):
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(
-        x=df.index, y=df["fuel_flow"], name="Fuel Flow (kg/s)",
-        line=dict(color=AMBER, width=2), fill="tozeroy",
-        fillcolor="rgba(245,158,11,0.06)"), secondary_y=False)
-    sfc = df["fuel_flow"] / (df["gt_torque"] / 1000).replace(0, np.nan)
-    fig.add_trace(go.Scatter(
-        x=df.index, y=sfc, name="SFC (kg/s per MW)",
-        line=dict(color=CYAN, width=1.5, dash="dot")), secondary_y=True)
-    fig.update_layout(**_lay(title="Fuel Consumption Trend", height=340))
-    fig.update_yaxes(title_text="Fuel Flow (kg/s)", gridcolor=BORDER, secondary_y=False)
-    fig.update_yaxes(title_text="SFC", gridcolor=BORDER, secondary_y=True)
-    fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
-    return fig
-
-
-def chart_temperatures(df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df["t48"], name="HP Turbine Exit (T48)",
-                             line=dict(color=RED, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["t2"], name="Compressor Outlet (T2)",
-                             line=dict(color=AMBER, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["t1"], name="Compressor Inlet (T1)",
-                             line=dict(color=TEAL, width=2)))
-    fig.update_layout(**_lay(title="Temperature Profiles (\u00b0C)", height=340,
-                             yaxis=dict(gridcolor=BORDER, title="\u00b0C")))
-    fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
-    return fig
-
-
-def chart_pressures(df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df["p2"], name="Compressor Outlet (P2)",
-                             line=dict(color=CYAN, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["p48"], name="HP Turbine Exit (P48)",
-                             line=dict(color=BLUE, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["p1"], name="Compressor Inlet (P1)",
-                             line=dict(color=TEAL, width=1.5, dash="dot")))
-    fig.add_trace(go.Scatter(x=df.index, y=df["pexh"], name="Exhaust (Pexh)",
-                             line=dict(color=AMBER, width=1.5, dash="dot")))
-    fig.update_layout(**_lay(title="Pressure Profiles (bar)", height=340,
-                             yaxis=dict(gridcolor=BORDER, title="bar")))
-    fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
-    return fig
-
-
-def chart_propulsion(df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df["ts"], name="Starboard (Ts)",
-                             line=dict(color=CYAN, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["tp"], name="Port (Tp)",
-                             line=dict(color=TEAL, width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=abs(df["ts"] - df["tp"]),
-                             name="|Ts - Tp| Imbalance",
-                             line=dict(color=RED, width=1.5, dash="dot")))
-    fig.update_layout(**_lay(title="Propeller Torque (kN)", height=340,
-                             yaxis=dict(gridcolor=BORDER, title="kN")))
-    fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
-    return fig
-
-
-def make_gauge(value, title, min_val=0.85, max_val=1.0):
-    CRITICAL_THRESHOLD = 0.975
-
-    if value >= CRITICAL_THRESHOLD:
-        bar_color = TEAL
-        status_text = "HEALTHY"
-    else:
-        bar_color = RED
-        status_text = "CRITICAL"
-
+def create_gauge(value, label, color, threshold):
     fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
+        mode="gauge+number",
         value=value,
-        delta=dict(
-            reference=CRITICAL_THRESHOLD,
-            valueformat=".4f",
-            increasing=dict(color=TEAL),
-            decreasing=dict(color=RED),
-        ),
-        number=dict(
-            font=dict(size=34, color=bar_color, family="JetBrains Mono, monospace"),
-            valueformat=".4f",
-            suffix=f"  {status_text}",
-        ),
-        title=dict(
-            text=f"<b>{title}</b><br><span style='font-size:11px;color:{DIM}'>Decay State Coefficient</span>",
-            font=dict(size=14, color=TEXT),
-        ),
-        gauge=dict(
-            axis=dict(
-                range=[min_val, max_val],
-                tickcolor=DIM,
-                tickfont=dict(size=10, color=DIM),
-                tickformat=".3f",
-                nticks=6,
-            ),
-            bar=dict(color=bar_color, thickness=0.5),
-            bgcolor=BORDER,
-            borderwidth=0,
-            steps=[
-                dict(range=[min_val, CRITICAL_THRESHOLD], color="rgba(239,68,68,0.10)"),
-                dict(range=[CRITICAL_THRESHOLD, max_val], color="rgba(45,212,191,0.10)"),
+        title={'text': label, 'font': {'size': 16, 'color': TEXT_PRIMARY}},
+        number={'font': {'color': color, 'family': "JetBrains Mono"}, 'valueformat': ".4f"},
+        gauge={
+            'axis': {'range': [0.94, 1.0], 'tickwidth': 1, 'tickcolor': TEXT_DIM},
+            'bar': {'color': color},
+            'bgcolor': CARD_COLOR,
+            'borderwidth': 2,
+            'bordercolor': BORDER_COLOR,
+            'steps': [
+                {'range': [0.94, threshold], 'color': 'rgba(239, 68, 68, 0.1)'},
+                {'range': [threshold, 1.0], 'color': 'rgba(45, 212, 191, 0.1)'}
             ],
-            threshold=dict(
-                line=dict(color=AMBER, width=3),
-                thickness=0.85,
-                value=CRITICAL_THRESHOLD,
-            ),
+            'threshold': {
+                'line': {'color': TEXT_PRIMARY, 'width': 4},
+                'thickness': 0.75,
+                'value': threshold
+            }
+        }
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=30, r=30, t=50, b=20),
+        height=220
+    )
+    return fig
+
+def create_sensor_impact_chart(df_selected, df_baseline):
+    """
+    Compares selected cycle sensors against Cycle 1 baseline at each speed step.
+    """
+    # Key sensors to track for impact
+    impact_sensors = ["t48", "t2", "p48", "p2", "fuel_flow", "gt_torque"]
+    sensor_names = {
+        "t48": "Turbine Exit Temp",
+        "t2": "Compressor Outlet Temp",
+        "p48": "Turbine Exit Press",
+        "p2": "Compressor Outlet Press",
+        "fuel_flow": "Fuel Flow",
+        "gt_torque": "Turbine Torque"
+    }
+    
+    # Calculate average deviation across the speed sweep (27 -> 3)
+    deviations = []
+    labels = []
+    
+    for s in impact_sensors:
+        # Match by ship_speed to ensure apples-to-apples comparison
+        # We group by speed and take the mean to handle any variations
+        base_means = df_baseline.groupby("ship_speed")[s].mean()
+        curr_means = df_selected.groupby("ship_speed")[s].mean()
+        
+        # Calculate % change
+        pct_change = ((curr_means - base_means) / base_means).mean() * 100
+        
+        if np.isfinite(pct_change):
+            deviations.append(pct_change)
+            labels.append(sensor_names[s])
+
+    fig = go.Figure(go.Bar(
+        x=deviations,
+        y=labels,
+        orientation='h',
+        marker=dict(
+            color=[ACCENT_AMBER if d > 0 else ACCENT_CYAN for d in deviations],
+            line=dict(color=TEXT_PRIMARY, width=1)
         ),
+        hovertemplate="Deviation: %{x:.2f}%<extra></extra>"
     ))
 
     fig.update_layout(
-        paper_bgcolor=BG,
-        plot_bgcolor=BG,
-        font=dict(color=TEXT, family="Inter, system-ui, sans-serif"),
-        margin=dict(l=30, r=30, t=80, b=20),
-        height=260,
+        title="Average Sensor Deviation vs. Baseline (Cycle 1)",
+        template="plotly_dark",
+        paper_bgcolor=BG_COLOR,
+        plot_bgcolor=CARD_COLOR,
+        font=dict(color=TEXT_PRIMARY),
+        xaxis=dict(title="Percentage Change (%)", gridcolor=BORDER_COLOR, zerolinecolor=TEXT_PRIMARY),
+        yaxis=dict(gridcolor=BORDER_COLOR),
+        margin=dict(l=150, r=40, t=60, b=40),
+        height=400
     )
+    
     return fig

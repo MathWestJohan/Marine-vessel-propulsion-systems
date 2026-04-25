@@ -1,23 +1,21 @@
 import os
 import pandas as pd
+import numpy as np
 import gradio as gr
 import warnings
 
 # Suppress sklearn feature name warnings
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
-from dashboard.components import (
-    DIM, CYAN, TEAL, RED, BORDER,
-    sensor_html, health_html, efficiency_html,
-    get_css, header_html,
+from .components import (
+    get_css, health_card, sensor_grid, 
+    ACCENT_CYAN, ACCENT_AMBER, ACCENT_TEAL, ACCENT_RED
 )
-from dashboard.charts import (
-    chart_decay_trend, chart_innovation, chart_fuel_efficiency,
-    chart_temperatures, chart_pressures, chart_propulsion, make_gauge,
-)
-from dashboard.chatbot import respond_streaming, get_system_context, respond, warmup_model, clear_chat_snapshot_cache
+from .charts import create_main_trend_chart, create_gauge, create_sensor_impact_chart
+from .chatbot import chat_stream
 
-# Column mapping for raw CSV
+# --- Constants & Config ---
+# We use a mapping that handles the hidden non-breaking spaces found in the raw CSV
 COL_MAP = {
     "Lever position": "lever_pos",
     "Ship speed (v)": "ship_speed",
@@ -45,301 +43,263 @@ FEATURE_COLS = [
     "tic", "fuel_flow",
 ]
 
-def _load_data(data_path=None):
-    if data_path is None:
-        data_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "data.csv")
+def load_data():
+    data_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "data.csv")
     df = pd.read_csv(data_path)
+    
+    # Robust cleaning: strip standard whitespace AND non-breaking spaces (\xa0)
+    df.columns = [c.strip().replace('\xa0', '') for c in df.columns]
+    
+    # Rename to our internal standardized names
+    df.rename(columns=COL_MAP, inplace=True)
+    
     # Reverse to match chronological order (Healthy -> Degraded)
     df = df.iloc[::-1].reset_index(drop=True)
-    df.columns = [c.strip() for c in df.columns]
-    df.rename(columns=COL_MAP, inplace=True)
+    
+    # Identify Mission Cycles (each 27 -> 3 knot sweep)
+    cycles = []
+    current_cycle = 0
+    for i in range(len(df)):
+        if df['ship_speed'].iloc[i] == 27:
+            current_cycle += 1
+        cycles.append(current_cycle)
+    df['mission_cycle'] = cycles
     return df
 
-
-def _add_predictions(df, dt_instance):
+def calculate_rul(df, current_val, target_col='comp_decay', threshold=0.95):
     """
-    Run ML models on sensor features and add predicted decay columns.
-    Keeps the original CSV columns as ground truth for comparison.
+    Predicts Remaining Useful Life in terms of Mission Cycles (27-3 kn sweeps).
     """
-    if dt_instance is None:
-        return df
-    
-    df = df.copy()
-    
-    model = dt_instance.compressor_model
-    if hasattr(model, "n_features_in_"):
-        n_expected = model.n_features_in_
+    if target_col == 'turb_decay':
+        total_drop_range = 1.0 - 0.975 
+        remaining_health_budget = current_val - threshold
+        if remaining_health_budget <= 0: return "Maintenance Due"
+        mission_cycles_per_maint = 26.0
+        cycles_left = (remaining_health_budget / total_drop_range) * mission_cycles_per_maint
+        return f"{max(0, cycles_left):.1f} Cycles"
     else:
-        n_expected = len(FEATURE_COLS)
+        y = df[target_col].values
+        slope, _ = np.polyfit(np.arange(len(y)), y, 1)
+        if slope >= 0: return "Stable"
+        samples_left = (threshold - current_val) / slope
+        cycles_left = samples_left / 9.0
+        return f"{max(0, cycles_left):.1f} Cycles"
+
+def detect_turbine_cycles(df):
+    turbine_events = []
+    jump_threshold = 0.01
+    for i in range(1, len(df)):
+        if df['turb_decay'].iloc[i] > df['turb_decay'].iloc[i-1] + jump_threshold:
+            turbine_events.append(i)
+    return turbine_events
+
+def launch_dashboard(dt_instance):
+    RAW_DF = load_data()
+    MAX_CYCLES = RAW_DF['mission_cycle'].max()
     
-    feature_cols = [c for c in FEATURE_COLS if c in df.columns][:n_expected]
-    
-    if len(feature_cols) < n_expected:
-        print(f" Feature mismatch: Model expects {n_expected}, found {len(feature_cols)}")
-        print(f" Available: {feature_cols}")
-        return df
-    
-    # Extract sensor features for ML prediction
-    X_raw = df[feature_cols]
-    
-    # Scale for compressor model (only if SVM won)
-    if dt_instance.comp_scaler is not None:
-        # Using .values to avoid "feature names mismatch" error with scikit-learn
-        X_comp = dt_instance.comp_scaler.transform(X_raw.values)
-    else:
-        X_comp = X_raw.values
-
-    # Scale for turbine model (only if SVM won)
-    if dt_instance.turb_scaler is not None:
-        # Using .values to avoid "feature names mismatch" error with scikit-learn
-        X_turb = dt_instance.turb_scaler.transform(X_raw.values)
-    else:
-        X_turb = X_raw.values
-
-    # Run ML model predictions
-    # SVM models (from sklearn) work fine with numpy arrays
-    df["comp_decay_pred"] = dt_instance.compressor_model.predict(X_comp)
-    df["turb_decay_pred"] = dt_instance.turbine_model.predict(X_turb)
-
-    # Store ground truth for comparison
-    df["comp_decay_actual"] = df["comp_decay"]
-    df["turb_decay_actual"] = df["turb_decay"]
-
-    # Replace with predictions so all downstream code uses them
-    df["comp_decay"] = df["comp_decay_pred"]
-    df["turb_decay"] = df["turb_decay_pred"]
-    
-    return df
-
-def generate_report(df, dt_instance):
-    if df is None:
-        return None
-    context = get_system_context(df, dt_instance)
-    ai_reply = respond(
-        "Summarise the current system status and give maintenance recommendations.",
-        [],
-        df,
-        dt_twin=dt_instance,
-    )
-    # respond() returns the updated history list; extract the assistant message
-    assistant_text = ai_reply[-1]["content"] if ai_reply else "No response generated."
-    report_path = "maintenance_report.txt"
-    with open(report_path, "w") as f:
-        f.write("=== MARINE PROPULSION MAINTENANCE REPORT ===\n\n")
-        f.write("--- System Snapshot ---\n")
-        f.write(context)
-        f.write("\n\n--- AI Recommendation ---\n")
-        f.write(assistant_text)
-    return report_path
-
-def launch_dashboard(dt_instance=None, data_path=None):
-    """Launch the Gradio dashboard."""
-    RAW_DF = _load_data(data_path)
-    BASELINES = RAW_DF.groupby("ship_speed").first().reset_index()
-    speed_choices = ["All"] + [f"{v} kn" for v in sorted(RAW_DF["ship_speed"].unique())]
-    tic_min = float(RAW_DF["tic"].min())
-    tic_max = float(RAW_DF["tic"].max())
-    
-    # Check if models are available
-    has_models = dt_instance is not None and hasattr(dt_instance, 'compressor_model')
-    if has_models:
-        print(" ML models detected — dashboard will show model predictions")
-        n = dt_instance.compressor_model.n_features_in_ if hasattr(dt_instance.compressor_model, 'n_features_in_') else '?'
-        print(f" Model expects {n} features, FEATURE_COLS has {len(FEATURE_COLS)}")
-    else:
-        print(" No ML models — dashboard will show raw CSV values")
-
-    def filter_df(speed, tic_val):
-        df = RAW_DF.copy()
-        if speed is not None and speed != "All":
-            df = df[df["ship_speed"] == float(speed.replace(" kn", ""))]
-        if tic_val is not None:
-            low, high = tic_val
-            df = df[(df["tic"] >= low) & (df["tic"] <= high)]
-        if len(df) == 0:
-            df = RAW_DF.copy()
-        return df.reset_index(drop=True)
-
-    def update_all(speed, tic_min_val, tic_max_val, fault_offsets=None):
-        df = filter_df(speed, (tic_min_val, tic_max_val))
+    def update_dashboard(cycle_selection, downsample, random_trigger, active_faults):
+        # 1. Filter Data by Mission Cycle
+        df_baseline = RAW_DF[RAW_DF['mission_cycle'] == 1]
         
-        # Apply simulated faults if any
-        if fault_offsets:
-            for sensor, offset in fault_offsets.items():
-                if sensor in df.columns:
-                    df[sensor] = df[sensor] * (1 + offset/100)
+        if cycle_selection == "All Mission Data":
+            df_view = RAW_DF
+            snapshot_label = "Full Life-Cycle Profile"
+            df_selected_for_impact = RAW_DF[RAW_DF['mission_cycle'] == MAX_CYCLES]
+        else:
+            try:
+                # Correctly parse "Mission Cycle 10" -> 10
+                cycle_num = int(cycle_selection.split(" ")[-1])
+            except (IndexError, ValueError):
+                cycle_num = 1
+            df_view = RAW_DF[RAW_DF['mission_cycle'] == cycle_num]
+            snapshot_label = f"Mission Cycle {cycle_num} Detail (27 \u2192 3 kn)"
+            df_selected_for_impact = df_view
 
-        # Run ML predictions on filtered data
-        df = _add_predictions(df, dt_instance)
+        # 2. Select Snapshot
+        if len(df_view) > 0:
+            random_idx = np.random.randint(0, len(df_view))
+            current_snapshot = df_view.iloc[random_idx].copy()
+            snapshot_label += f" | {current_snapshot['ship_speed']:.0f} kn"
+        else:
+            return [None] * 13
+
+        # --- Apply Injected Faults ---
+        fault_info = ""
+        if active_faults:
+            for sensor, offset_pct in active_faults.items():
+                if sensor in current_snapshot:
+                    current_snapshot[sensor] = current_snapshot[sensor] * (1 + offset_pct / 100)
+                    fault_info += f"FAULT: {sensor} shifted {offset_pct:+.1f}% | "
+
+        # 3. ML Model Predictions (Virtual Sensing)
+        feature_data = current_snapshot[FEATURE_COLS]
         
-        # Detect maintenance jumps for the current view
-        if has_models and dt_instance:
-            dt_instance.maintenance_history = []
-            dt_instance.health_history = []
-            dt_instance.last_health = {"compressor": 1.0, "turbine": 1.0}
+        if dt_instance:
+            pred = dt_instance.predict_health(feature_data)
+            comp_health = pred["compressor_health"]
+            turb_health = pred["turbine_health"]
+            source_tag = "ML Prediction"
+        else:
+            comp_health = float(current_snapshot["comp_decay"])
+            turb_health = float(current_snapshot["turb_decay"])
+            source_tag = "Ground Truth"
+        
+        # Calculate RUL
+        comp_rul = calculate_rul(RAW_DF, comp_health, target_col='comp_decay', threshold=0.95)
+        turb_rul = calculate_rul(RAW_DF, turb_health, target_col='turb_decay', threshold=0.975)
+        
+        turbine_events = detect_turbine_cycles(RAW_DF)
+        num_gt_maint = sum(1 for e in turbine_events if e <= current_snapshot.name)
+        
+        comp_status = "HEALTHY" if comp_health >= 0.95 else "CRITICAL"
+        turb_status = "HEALTHY" if turb_health >= 0.975 else "CRITICAL"
+
+        # 4. HTML Components
+        comp_card = health_card(f"Compressor ({source_tag})", comp_health, f"Maint. in: {comp_rul}", ACCENT_CYAN, comp_status)
+        turb_card = health_card(f"Gas Turbine ({source_tag})", turb_health, f"Maint. in: {turb_rul}", ACCENT_AMBER, turb_status)
+        
+        sensors = [
+            ("Sample Index", f"{current_snapshot.name}", "#"),
+            ("Current Speed", f"{current_snapshot['ship_speed']:.0f}", "kn"),
+            ("GT Torque", f"{current_snapshot['gt_torque']:,.0f}", "kN m"),
+            ("Fuel Flow", f"{current_snapshot['fuel_flow']:.4f}", "kg/s"),
+            ("Exit Temp", f"{current_snapshot['t48']:.1f}", "\u00b0C"),
+            ("Outlet Pres", f"{current_snapshot['p2']:.3f}", "bar"),
+            ("GT RPM", f"{current_snapshot['gt_rpm']:,.0f}", "rpm"),
+            ("GG RPM", f"{current_snapshot['gg_rpm']:,.0f}", "rpm"),
+            ("Inlet Temp", f"{current_snapshot['t1']:.1f}", "\u00b0C"),
+            ("Outlet Temp", f"{current_snapshot['t2']:.1f}", "\u00b0C"),
+            ("Inlet Pres", f"{current_snapshot['p1']:.3f}", "bar"),
+            ("Exh Pres", f"{current_snapshot['pexh']:.3f}", "bar"),
+        ]
+        
+        header_color = ACCENT_RED if fault_info else ACCENT_TEAL
+        grid_html = f"<div style='margin-bottom:10px; color:{header_color}; font-weight:bold;'>{snapshot_label} | Sample #{current_snapshot.name}</div>"
+        if fault_info:
+            grid_html += f"<div style='background:rgba(239,68,68,0.1); border:1px solid {ACCENT_RED}; padding:5px; margin-bottom:10px; font-size:0.8rem; color:{ACCENT_RED};'>{fault_info}</div>"
+        grid_html += sensor_grid(sensors)
+
+        # 5. Plots
+        df_plot = df_view
+        if downsample:
+            step = max(1, len(df_plot) // 1000)
+            df_plot = df_plot.iloc[::step]
             
-            # Vectorized history for status cards
-            comp_vals = df["comp_decay"].values
-            turb_vals = df["turb_decay"].values
-            
-            # Detect jumps efficiently
-            for i in range(1, len(df)):
-                if comp_vals[i] > comp_vals[i-1] + 0.01 or turb_vals[i] > turb_vals[i-1] + 0.01:
-                    dt_instance._detect_jumps(comp_vals[i], turb_vals[i])
+        trend_fig = create_main_trend_chart(df_plot if cycle_selection != "All Mission Data" else RAW_DF, turbine_events)
+        comp_gauge = create_gauge(comp_health, "Compressor Health Index", ACCENT_CYAN, 0.95)
+        turb_gauge = create_gauge(turb_health, "GT Health Index", ACCENT_AMBER, 0.975)
+        impact_fig = create_sensor_impact_chart(df_selected_for_impact, df_baseline)
 
-        source = "ML Model Predictions" if has_models else "Raw CSV"
-        maint_hist = getattr(dt_instance, "maintenance_history", [])
-        
-        print(f"\n--- Updating dashboard with {len(df)} records (Source: {source}) ---")
-        print(f" Speed filter: {speed}, TIC range: [{tic_min_val}, {tic_max_val}]")
-        print(f" Available features: {', '.join([c for c in FEATURE_COLS if c in df.columns])}")
         return (
-            sensor_html(df),
-            health_html(df, dt_instance, source_label=source),
-            efficiency_html(df, BASELINES),
-            chart_decay_trend(df, maintenance_history=maint_hist),
-            chart_innovation(df),
-            make_gauge(df["comp_decay"].mean(), "Compressor"),
-            make_gauge(df["turb_decay"].mean(), "Turbine"),
-            chart_fuel_efficiency(df),
-            chart_temperatures(df),
-            chart_pressures(df),
-            chart_propulsion(df),
-            df,
+            comp_card, turb_card, grid_html, 
+            trend_fig, comp_gauge, turb_gauge, impact_fig,
+            active_faults, current_snapshot, comp_health, turb_health, comp_rul, turb_rul
         )
 
-    with gr.Blocks(title="Marine GT Propulsion Monitor") as demo:
-        current_df = gr.State()
-        fault_offsets = gr.State({})
-        gr.HTML(header_html(len(RAW_DF)))
+    with gr.Blocks(title="Propulsion Digital Twin") as demo:
+        gr.Markdown(f"# Marine Propulsion Digital Twin <span style='color:{ACCENT_TEAL}; font-size: 0.8rem; margin-left: 10px;'>ONLINE</span>")
+        
+        random_trigger = gr.State(0)
+        active_faults = gr.State({})
+        
+        # States for Chatbot context
+        chat_snapshot = gr.State()
+        chat_comp_health = gr.State()
+        chat_turb_health = gr.State()
+        chat_comp_rul = gr.State()
+        chat_turb_rul = gr.State()
 
         with gr.Row():
-            # ── LEFT SIDEBAR ── controls always visible while scrolling
-            with gr.Column(scale=1, min_width=220):
-                gr.HTML(f'<div class="section-label">Input Panel &mdash; Operating Conditions</div>')
-                speed_dd = gr.Dropdown(
-                    choices=speed_choices, value="All",
-                    label="Ship Speed (knots)", interactive=True,
+            with gr.Column(scale=1):
+                gr.Markdown("### Mission Context")
+                cycle_dd = gr.Dropdown(
+                    choices=["All Mission Data"] + [f"Mission Cycle {i}" for i in range(1, MAX_CYCLES + 1)],
+                    value="All Mission Data", label="Mission Cycle Selection"
                 )
-                gr.HTML(f'<div style="font-size:12px;color:{DIM};text-transform:uppercase;margin:8px 0 2px;">TIC Range (%)</div>')
-                tic_min_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_min, label="Min", interactive=True)
-                tic_max_slider = gr.Slider(minimum=tic_min, maximum=tic_max, value=tic_max, label="Max", interactive=True)
-                apply_btn = gr.Button("Apply Filters & Refresh Predictions", variant="primary")
+                refresh_btn = gr.Button("Random Snapshot in Cycle", variant="secondary")
+                downsample_chk = gr.Checkbox(value=True, label="Enable Downsampling")
+                gr.Markdown("---")
+                gr.Markdown("### Technical Insights")
+                gr.Markdown(f"""
+                - **Mission Cycle:** One cycle = A full speed sweep from 27 knots to 3 knots.
+                - **Maintenance Tracking:** GT maintenance resets are tracked via cumulative count.
+                - **Fault Injection:** Use the Lab tab to test model robustness.
+                - **AI Agent:** Chat with the Chief Engineer in the new tab.
+                """)
 
-                gr.HTML(f'<hr style="border:none;border-top:1px solid #1e293b;margin:16px 0;"/>')
-
-                gr.HTML(f'<div class="section-label">Fault Simulation &amp; Reporting</div>')
-                fault_type = gr.Dropdown(
-                    choices=["None", "T48 Sensor Spike (+10%)", "P2 Pressure Drop (-10%)", "Fuel Leak (+5%)"],
-                    value="None", label="Inject Fault"
-                )
-                report_btn = gr.Button("Generate Report")
-                report_status = gr.HTML(
-                    f'<div style="margin-top:6px;padding:10px;border:1px dashed {BORDER};border-radius:6px;'
-                    f'text-align:center;font-size:11px;color:{DIM};">No report generated yet</div>'
-                )
-                report_file = gr.File(label="Report Ready — Click to Download", interactive=False, visible=False)
-
-            # ── MAIN CONTENT ──
-            with gr.Column(scale=4):
-                gr.HTML(f'<div class="section-label">Sensor Reading Display &mdash; 14 Measured Parameters</div>')
-                sensor_out = gr.HTML()
-
+            with gr.Column(scale=3):
                 with gr.Tabs():
-                    with gr.Tab("Health Monitoring"):
-                        gr.HTML(f'<div class="section-label">Decay Coefficients &amp; Health Metrics</div>')
-                        health_out = gr.HTML()
+                    with gr.Tab("System Health Snapshot"):
                         with gr.Row():
-                            comp_gauge = gr.Plot(label="Compressor Gauge")
-                            turb_gauge = gr.Plot(label="Turbine Gauge")
+                            comp_out = gr.HTML()
+                            turb_out = gr.HTML()
+                        sensor_out = gr.HTML()
                         with gr.Row():
-                            decay_plot = gr.Plot(label="Degradation Trend")
-                            innov_plot = gr.Plot(label="Measurement Innovations")
+                            comp_gauge_out = gr.Plot()
+                            turb_gauge_out = gr.Plot()
 
-                    with gr.Tab("Operational Efficiency"):
-                        gr.HTML(f'<div class="section-label">Efficiency vs Baseline &amp; Fuel Consumption</div>')
-                        eff_out = gr.HTML()
-                        with gr.Row():
-                            fuel_plot = gr.Plot(label="Fuel Consumption Trend")
+                    with gr.Tab("Historical Mission Trends"):
+                        main_chart = gr.Plot()
 
-                    with gr.Tab("Sensor Trends"):
+                    with gr.Tab("Sensor Impact Analysis"):
+                        gr.Markdown("### Deviation vs. Healthy Baseline (Cycle 1)")
+                        impact_chart = gr.Plot()
+                    
+                    with gr.Tab("Fault Simulation Lab"):
+                        gr.Markdown("### Manual Fault Injection")
                         with gr.Row():
-                            temp_plot = gr.Plot(label="Temperature Profiles")
-                            press_plot = gr.Plot(label="Pressure Profiles")
-                        with gr.Row():
-                            prop_plot = gr.Plot(label="Propeller Torque")
-
-                    with gr.Tab("AI Assistant"):
-                        gr.HTML(f'<div class="section-label">Digital Twin AI Assistant</div>')
-                        chatbot = gr.Chatbot(label="Marine Advisor", height=500)
-                        with gr.Row():
-                            msg = gr.Textbox(
-                                label="Ask about system health or maintenance...",
-                                placeholder="e.g., What is the current state of the compressor?",
-                                scale=4
+                            fault_sensor = gr.Dropdown(
+                                choices=[("Turbine Exit Temp (T48)", "t48"), 
+                                         ("Compressor Outlet Pres (P2)", "p2"), 
+                                         ("Fuel Flow (mf)", "fuel_flow")],
+                                label="Select Sensor", value="t48"
                             )
-                            clear = gr.Button("Clear Chat", scale=1)
+                            fault_magnitude = gr.Slider(minimum=-20, maximum=20, value=0, step=1, label="Offset (%)")
+                        
+                        with gr.Row():
+                            apply_fault_btn = gr.Button("Apply Fault Offset", variant="primary")
+                            clear_fault_btn = gr.Button("Clear All Faults", variant="secondary")
+                        
+                        gr.Markdown("**Tip:** Apply a fault, then check the 'Snapshot' tab to see how the health index and countdown drop.")
+                        
+                    with gr.Tab("AI Chief Engineer"):
+                        gr.Markdown("### Ask the AI Chief Engineer")
+                        gr.Markdown("The AI has real-time access to the current snapshot, maintenance schedule, and injected faults.")
+                        gr.ChatInterface(
+                            fn=chat_stream,
+                            additional_inputs=[chat_snapshot, chat_comp_health, chat_turb_health, chat_comp_rul, chat_turb_rul, active_faults]
+                        )
 
+        # Wire up events
+        inputs = [cycle_dd, downsample_chk, random_trigger, active_faults]
         outputs = [
-            sensor_out, health_out, eff_out,
-            decay_plot, innov_plot, comp_gauge, turb_gauge,
-            fuel_plot, temp_plot, press_plot, prop_plot,
-            current_df,
+            comp_out, turb_out, sensor_out, main_chart, comp_gauge_out, turb_gauge_out, impact_chart, active_faults,
+            chat_snapshot, chat_comp_health, chat_turb_health, chat_comp_rul, chat_turb_rul
         ]
-        inputs = [speed_dd, tic_min_slider, tic_max_slider, fault_offsets]
+        
+        def trigger_refresh(current_val): return current_val + 1
+        
+        def handle_apply_fault(sensor, magnitude, current_faults):
+            new_faults = dict(current_faults)
+            if magnitude == 0:
+                if sensor in new_faults: del new_faults[sensor]
+            else:
+                new_faults[sensor] = magnitude
+            return new_faults
 
-        def handle_fault(choice):
-            offsets = {}
-            if "T48" in choice: offsets["t48"] = 10
-            elif "P2" in choice: offsets["p2"] = -10
-            elif "Fuel" in choice: offsets["fuel_flow"] = 5
-            return offsets
+        def handle_clear_faults(): return {}
 
-        def chat_wrapper(message, history, df):
-            if history is None:
-                history = []
-            if not message or not message.strip():
-                yield history, ""
-                return
-            partial_history = list(history) + [{"role": "user", "content": message}]
-            yield partial_history, ""   # show user message + clear input immediately
-            for partial in respond_streaming(message, history, df, dt_twin=dt_instance):
-                yield partial_history + [{"role": "assistant", "content": partial}], ""
-
-        fault_type.change(handle_fault, fault_type, fault_offsets).then(
-            fn=update_all, inputs=inputs, outputs=outputs
+        apply_fault_btn.click(handle_apply_fault, [fault_sensor, fault_magnitude, active_faults], active_faults).then(
+            update_dashboard, inputs, outputs
+        )
+        
+        clear_fault_btn.click(handle_clear_faults, None, active_faults).then(
+            update_dashboard, inputs, outputs
         )
 
-        def handle_report(df):
-            path = generate_report(df, dt_instance)
-            if path:
-                status = (
-                    f'<div style="margin-top:6px;padding:10px;border:1px solid {TEAL}44;border-radius:6px;'
-                    f'background:{TEAL}11;text-align:center;font-size:11px;color:{TEAL};font-weight:600;">'
-                    f'Report ready &mdash; use the file below to download</div>'
-                )
-                return gr.update(value=status), gr.update(value=path, visible=True)
-            status = (
-                f'<div style="margin-top:6px;padding:10px;border:1px solid {RED}44;border-radius:6px;'
-                f'background:{RED}11;text-align:center;font-size:11px;color:{RED};">'
-                f'Report generation failed</div>'
-            )
-            return gr.update(value=status), gr.update(visible=False)
+        refresh_btn.click(trigger_refresh, random_trigger, random_trigger)
+        cycle_dd.change(update_dashboard, inputs, outputs)
+        random_trigger.change(update_dashboard, inputs, outputs)
+        demo.load(update_dashboard, inputs, outputs)
 
-        report_btn.click(handle_report, current_df, [report_status, report_file])
-
-        msg.submit(chat_wrapper, [msg, chatbot, current_df], [chatbot, msg])
-        clear.click(lambda: [], None, chatbot, queue=False).then(clear_chat_snapshot_cache)
-
-        apply_btn.click(fn=update_all, inputs=inputs, outputs=outputs)
-        speed_dd.change(fn=update_all, inputs=inputs, outputs=outputs)
-        tic_min_slider.change(fn=update_all, inputs=inputs, outputs=outputs)
-        tic_max_slider.change(fn=update_all, inputs=inputs, outputs=outputs)
-        demo.load(fn=update_all, inputs=inputs, outputs=outputs)
-
-        print("\n--- Launching Digital Twin Dashboard ---")
-        print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
-        _, msg = warmup_model()
-        print(f" Chat model warmup: {msg}")
-        demo.launch(server_name="127.0.0.1", server_port=7860, css=get_css())
-    
+    demo.launch(server_name="127.0.0.1", server_port=7860, css=get_css())

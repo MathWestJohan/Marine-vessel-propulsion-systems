@@ -38,8 +38,8 @@ def run_all_plots(df, image_dir):
 
     Example:
         >>> import pandas as pd
-        >>> df = pd.read_csv('propulsion_data.csv')
-        >>> run_all_plots(df, './output_images')
+        >>> df = pd.read_csv('propulsion_data.csv') # doctest: +SKIP
+        >>> run_all_plots(df, './output_images') # doctest: +SKIP
         Saved: ./output_images/correlation_heatmap.png
         Generated speed-based plots for 5 different speeds in ./output_images.
     """

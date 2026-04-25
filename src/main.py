@@ -8,7 +8,14 @@ from Plots import run_all_plots
 
 # Setup paths
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(project_root, 'src', 'models'))
+src_path = os.path.join(project_root, 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+# Also keep the models subpath for direct imports if needed
+models_path = os.path.join(src_path, 'models')
+if models_path not in sys.path:
+    sys.path.append(models_path)
 
 from Random_forest import train_random_forest
 from Gradientboosting import train_gradient_boosting
@@ -63,32 +70,27 @@ def main():
         model_path = os.path.join(model_dir, f"{target_key.lower()}_model.joblib")
         scaler_path = os.path.join(model_dir, f"{target_key.lower()}_scaler.joblib")
 
-        if os.path.exists(model_path):
-            print(f"\n--- Loading existing model for {target} ---")
-            best_models[target_key] = joblib.load(model_path)
-            best_scalers[target_key] = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
-            # Model loaded from disk — no training metrics available, skip chart entry.
-        else:
-            print(f"\n--- Training for {target} ---")
-            results = [
-                train_random_forest(train_path, test_path, target, image_dir),
-                train_gradient_boosting(train_path, test_path, target, image_dir),
-                train_svm(train_path, test_path, target, image_dir)
-            ]
-            all_results.extend(results)
+        # Force re-evaluation by always training
+        print(f"\n--- Re-evaluating for {target} ---")
+        results = [
+            train_random_forest(train_path, test_path, target, image_dir),
+            train_gradient_boosting(train_path, test_path, target, image_dir),
+            train_svm(train_path, test_path, target, image_dir)
+        ]
+        all_results.extend(results)
 
-            best = select_best_model(results, metric="Test R2")
-            best_models[target_key] = best["model_object"]
-            best_scalers[target_key] = best.get("scaler", None)
+        best = select_best_model(results, metric="Test R2")
+        best_models[target_key] = best["model_object"]
+        best_scalers[target_key] = best.get("scaler", None)
 
-            # Save the best model and scaler
-            joblib.dump(best_models[target_key], model_path)
-            if best_scalers[target_key] is not None:
-                joblib.dump(best_scalers[target_key], scaler_path)
-            print(f"  Saved best {target_key} model to {model_path}")
+        # Save the best model and scaler
+        joblib.dump(best_models[target_key], model_path)
+        if best_scalers[target_key] is not None:
+            joblib.dump(best_scalers[target_key], scaler_path)
+        print(f"  Saved best {target_key} model to {model_path}")
 
-            # Detailed comparison plots for this specific target
-            run_model_comparison_plots(train_path, test_path, target, image_dir)
+        # Detailed comparison plots for this specific target
+        run_model_comparison_plots(train_path, test_path, target, image_dir)
 
     # 4. Existing Final Summary Table & Plot
     if all_results:
