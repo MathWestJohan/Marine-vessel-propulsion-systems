@@ -27,30 +27,46 @@ def _lay(**kw):
 
 def chart_decay_trend(df, maintenance_history=None):
     fig = go.Figure()
+
+    # Predicted values (main traces)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df["comp_decay"], name="Compressor Decay",
+        x=df.index, y=df["comp_decay"], name="Compressor (predicted)",
         line=dict(color=CYAN, width=2), fill="tozeroy",
         fillcolor="rgba(6,182,212,0.06)"))
     fig.add_trace(go.Scatter(
-        x=df.index, y=df["turb_decay"], name="Turbine Decay",
+        x=df.index, y=df["turb_decay"], name="Turbine (predicted)",
         line=dict(color=AMBER, width=2), fill="tozeroy",
         fillcolor="rgba(245,158,11,0.06)"))
-    
-    # Add maintenance event markers
+
+    # Actual values overlay (if available from _add_predictions)
+    if "comp_decay_actual" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["comp_decay_actual"],
+            name="Compressor (actual)",
+            line=dict(color=CYAN, width=1, dash="dot"),
+            opacity=0.5))
+    if "turb_decay_actual" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["turb_decay_actual"],
+            name="Turbine (actual)",
+            line=dict(color=AMBER, width=1, dash="dot"),
+            opacity=0.5))
+
+    # Maintenance event markers
     if maintenance_history:
         for event in maintenance_history:
             idx = event['sample_index']
             if idx in df.index:
                 fig.add_vline(x=idx, line_dash="dot", line_color=TEAL, line_width=1.5)
-                fig.add_annotation(x=idx, y=1.01, text="Maint", showarrow=False, 
-                                 font=dict(color=TEAL, size=9), textangle=-90)
+                fig.add_annotation(x=idx, y=1.01, text="Maint", showarrow=False,
+                                   font=dict(color=TEAL, size=9), textangle=-90)
 
     fig.add_hline(y=0.975, line_dash="dash", line_color=TEAL,
                   annotation_text="Maintenance Limit", annotation_font_color=TEAL,
                   annotation_font_size=10)
     y_min = min(df["comp_decay"].min(), df["turb_decay"].min()) - 0.01
     y_max = max(df["comp_decay"].max(), df["turb_decay"].max()) + 0.01
-    fig.update_layout(**_lay(title="Degradation Trend", height=340,
+    fig.update_layout(**_lay(title="Degradation Trend (predicted vs actual)", height=340,
                              yaxis=dict(gridcolor=BORDER, title="Coefficient",
                                         range=[y_min, y_max])))
     fig.update_xaxes(title_text="Sample", gridcolor=BORDER)
