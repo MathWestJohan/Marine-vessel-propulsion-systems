@@ -1,9 +1,9 @@
 import os
+from datetime import datetime
 import pandas as pd
 import gradio as gr
 import warnings
 
-# Suppress sklearn feature name warnings
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 from dashboard.components import (
@@ -45,11 +45,11 @@ FEATURE_COLS = [
     "tic", "fuel_flow",
 ]
 
+
 def _load_data(data_path=None):
     if data_path is None:
         data_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "data.csv")
     df = pd.read_csv(data_path)
-    # Reverse to match chronological order (Healthy -> Degraded)
     df = df.iloc[::-1].reset_index(drop=True)
     df.columns = [c.strip() for c in df.columns]
     df.rename(columns=COL_MAP, inplace=True)
@@ -63,74 +63,98 @@ def _add_predictions(df, dt_instance):
     """
     if dt_instance is None:
         return df
-    
+
     df = df.copy()
-    
+
     model = dt_instance.compressor_model
     if hasattr(model, "n_features_in_"):
         n_expected = model.n_features_in_
     else:
         n_expected = len(FEATURE_COLS)
-    
+
     feature_cols = [c for c in FEATURE_COLS if c in df.columns][:n_expected]
-    
+
     if len(feature_cols) < n_expected:
         print(f" Feature mismatch: Model expects {n_expected}, found {len(feature_cols)}")
-        print(f" Available: {feature_cols}")
         return df
-    
-    # Extract sensor features for ML prediction
+
     X_raw = df[feature_cols]
-    
-    # Scale for compressor model (only if SVM won)
+
     if dt_instance.comp_scaler is not None:
-        # Using .values to avoid "feature names mismatch" error with scikit-learn
         X_comp = dt_instance.comp_scaler.transform(X_raw.values)
     else:
         X_comp = X_raw.values
 
-    # Scale for turbine model (only if SVM won)
     if dt_instance.turb_scaler is not None:
-        # Using .values to avoid "feature names mismatch" error with scikit-learn
         X_turb = dt_instance.turb_scaler.transform(X_raw.values)
     else:
         X_turb = X_raw.values
 
-    # Run ML model predictions
-    # SVM models (from sklearn) work fine with numpy arrays
     df["comp_decay_pred"] = dt_instance.compressor_model.predict(X_comp)
     df["turb_decay_pred"] = dt_instance.turbine_model.predict(X_turb)
 
-    # Store ground truth for comparison
+    # Store ground truth for comparison overlay in charts
     df["comp_decay_actual"] = df["comp_decay"]
     df["turb_decay_actual"] = df["turb_decay"]
 
-    # Replace with predictions so all downstream code uses them
+    # Replace with predictions so downstream code uses them
     df["comp_decay"] = df["comp_decay_pred"]
     df["turb_decay"] = df["turb_decay_pred"]
-    
+
     return df
 
+
 def generate_report(df, dt_instance):
+    """Generate a structured markdown maintenance report."""
     if df is None:
         return None
+
     context = get_system_context(df, dt_instance)
     ai_reply = respond(
-        "Summarise the current system status and give maintenance recommendations.",
+        "Provide a structured maintenance report. Use the format: "
+        "STATUS, KEY FINDINGS, RECOMMENDED ACTIONS, REASONING.",
         [],
         df,
         dt_twin=dt_instance,
     )
-    # respond() returns the updated history list; extract the assistant message
     assistant_text = ai_reply[-1]["content"] if ai_reply else "No response generated."
-    report_path = "maintenance_report.txt"
+
+    # Compute summary metrics for the report header
+    comp_val = df["comp_decay"].mean() if "comp_decay" in df.columns else "N/A"
+    turb_val = df["turb_decay"].mean() if "turb_decay" in df.columns else "N/A"
+
+    model_name = "Unknown"
+    if dt_instance and hasattr(dt_instance.compressor_model, '__class__'):
+        model_name = dt_instance.compressor_model.__class__.__name__
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    report_path = "maintenance_report.md"
     with open(report_path, "w") as f:
-        f.write("=== MARINE PROPULSION MAINTENANCE REPORT ===\n\n")
-        f.write("--- System Snapshot ---\n")
-        f.write(context)
-        f.write("\n\n--- AI Recommendation ---\n")
+        f.write("# Marine Propulsion Maintenance Report\n\n")
+        f.write(f"**Generated:** {timestamp}\n\n")
+        f.write(f"**ML Model:** {model_name}\n\n")
+        f.write(f"**Records Analyzed:** {len(df):,}\n\n")
+        f.write("---\n\n")
+        f.write("## System Metrics\n\n")
+        f.write(f"| Metric | Value |\n")
+        f.write(f"|--------|-------|\n")
+        f.write(f"| Compressor Health (mean) | {comp_val:.4f} |\n")
+        f.write(f"| Turbine Health (mean) | {turb_val:.4f} |\n")
+        f.write(f"| Maintenance Threshold | 0.975 |\n")
+        f.write(f"| Compressor Status | {'HEALTHY' if comp_val >= 0.975 else 'CRITICAL'} |\n")
+        f.write(f"| Turbine Status | {'HEALTHY' if turb_val >= 0.975 else 'CRITICAL'} |\n")
+        f.write("\n---\n\n")
+        f.write("## System Snapshot\n\n")
+        f.write(f"```\n{context}\n```\n\n")
+        f.write("---\n\n")
+        f.write("## AI Analysis & Recommendations\n\n")
         f.write(assistant_text)
+        f.write("\n\n---\n\n")
+        f.write(f"*Report generated by Marine GT Propulsion Digital Twin — {timestamp}*\n")
+
     return report_path
+
 
 def launch_dashboard(dt_instance=None, data_path=None):
     """Launch the Gradio dashboard."""
@@ -139,8 +163,7 @@ def launch_dashboard(dt_instance=None, data_path=None):
     speed_choices = ["All"] + [f"{v} kn" for v in sorted(RAW_DF["ship_speed"].unique())]
     tic_min = float(RAW_DF["tic"].min())
     tic_max = float(RAW_DF["tic"].max())
-    
-    # Check if models are available
+
     has_models = dt_instance is not None and hasattr(dt_instance, 'compressor_model')
     if has_models:
         print(" ML models detected — dashboard will show model predictions")
@@ -162,37 +185,29 @@ def launch_dashboard(dt_instance=None, data_path=None):
 
     def update_all(speed, tic_min_val, tic_max_val, fault_offsets=None):
         df = filter_df(speed, (tic_min_val, tic_max_val))
-        
-        # Apply simulated faults if any
+
         if fault_offsets:
             for sensor, offset in fault_offsets.items():
                 if sensor in df.columns:
-                    df[sensor] = df[sensor] * (1 + offset/100)
+                    df[sensor] = df[sensor] * (1 + offset / 100)
 
-        # Run ML predictions on filtered data
         df = _add_predictions(df, dt_instance)
-        
-        # Detect maintenance jumps for the current view
+
         if has_models and dt_instance:
             dt_instance.maintenance_history = []
             dt_instance.health_history = []
             dt_instance.last_health = {"compressor": 1.0, "turbine": 1.0}
-            
-            # Vectorized history for status cards
+
             comp_vals = df["comp_decay"].values
             turb_vals = df["turb_decay"].values
-            
-            # Detect jumps efficiently
+
             for i in range(1, len(df)):
-                if comp_vals[i] > comp_vals[i-1] + 0.01 or turb_vals[i] > turb_vals[i-1] + 0.01:
+                if comp_vals[i] > comp_vals[i - 1] + 0.01 or turb_vals[i] > turb_vals[i - 1] + 0.01:
                     dt_instance._detect_jumps(comp_vals[i], turb_vals[i])
 
         source = "ML Model Predictions" if has_models else "Raw CSV"
         maint_hist = getattr(dt_instance, "maintenance_history", [])
-        
-        print(f"\n--- Updating dashboard with {len(df)} records (Source: {source}) ---")
-        print(f" Speed filter: {speed}, TIC range: [{tic_min_val}, {tic_max_val}]")
-        print(f" Available features: {', '.join([c for c in FEATURE_COLS if c in df.columns])}")
+
         return (
             sensor_html(df),
             health_html(df, dt_instance, source_label=source),
@@ -214,7 +229,7 @@ def launch_dashboard(dt_instance=None, data_path=None):
         gr.HTML(header_html(len(RAW_DF)))
 
         with gr.Row():
-            # ── LEFT SIDEBAR ── controls always visible while scrolling
+            # ── LEFT SIDEBAR ──
             with gr.Column(scale=1, min_width=220):
                 gr.HTML(f'<div class="section-label">Input Panel &mdash; Operating Conditions</div>')
                 speed_dd = gr.Dropdown(
@@ -280,6 +295,18 @@ def launch_dashboard(dt_instance=None, data_path=None):
                             )
                             clear = gr.Button("Clear Chat", scale=1)
 
+                        # Example prompts for quick access
+                        gr.Examples(
+                            examples=[
+                                "What is the current system health?",
+                                "When is the next maintenance needed?",
+                                "What is causing the degradation?",
+                                "Generate a maintenance summary",
+                            ],
+                            inputs=msg,
+                            label="Quick questions",
+                        )
+
         outputs = [
             sensor_out, health_out, eff_out,
             decay_plot, innov_plot, comp_gauge, turb_gauge,
@@ -290,9 +317,12 @@ def launch_dashboard(dt_instance=None, data_path=None):
 
         def handle_fault(choice):
             offsets = {}
-            if "T48" in choice: offsets["t48"] = 10
-            elif "P2" in choice: offsets["p2"] = -10
-            elif "Fuel" in choice: offsets["fuel_flow"] = 5
+            if "T48" in choice:
+                offsets["t48"] = 10
+            elif "P2" in choice:
+                offsets["p2"] = -10
+            elif "Fuel" in choice:
+                offsets["fuel_flow"] = 5
             return offsets
 
         def chat_wrapper(message, history, df):
@@ -302,7 +332,7 @@ def launch_dashboard(dt_instance=None, data_path=None):
                 yield history, ""
                 return
             partial_history = list(history) + [{"role": "user", "content": message}]
-            yield partial_history, ""   # show user message + clear input immediately
+            yield partial_history, ""
             for partial in respond_streaming(message, history, df, dt_twin=dt_instance):
                 yield partial_history + [{"role": "assistant", "content": partial}], ""
 
@@ -339,7 +369,6 @@ def launch_dashboard(dt_instance=None, data_path=None):
 
         print("\n--- Launching Digital Twin Dashboard ---")
         print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
-        _, msg = warmup_model()
-        print(f" Chat model warmup: {msg}")
+        _, msg_str = warmup_model()
+        print(f" Chat model warmup: {msg_str}")
         demo.launch(server_name="127.0.0.1", server_port=7860, css=get_css())
-    
