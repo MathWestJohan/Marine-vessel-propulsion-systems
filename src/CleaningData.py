@@ -6,7 +6,6 @@ def load_and_clean_data(file_path='Data/data.csv'):
     """
     Loads and cleans the dataset, keeping both decay coefficients.
     """
-    # Adjust path if running from 'src' folder
     if not os.path.exists(file_path) and os.path.exists(os.path.join('..', file_path)):
         file_path = os.path.join('..', file_path)
 
@@ -25,7 +24,6 @@ def load_and_clean_data(file_path='Data/data.csv'):
                                                                                                                 'less_than',
                                                                                                                 regex=False)
 
-    # Remove constant columns
     constant_cols = [col for col in df.columns if df[col].nunique() <= 1]
     if constant_cols:
         df = df.drop(columns=constant_cols)
@@ -40,14 +38,11 @@ def split_and_save_data(df, data_folder='Data'):
     if not os.path.exists(data_folder) and os.path.exists(os.path.join('..', data_folder)):
         data_folder = os.path.join('..', data_folder)
 
-    # Perform the split
     train_df, test_df = train_test_split(df, test_size=0.20, random_state=42)
 
-    # Define file paths
     train_path = os.path.join(data_folder, 'train.csv')
     test_path = os.path.join(data_folder, 'test.csv')
 
-    # Save to CSV
     train_df.to_csv(train_path, index=False)
     test_df.to_csv(test_path, index=False)
 

@@ -45,7 +45,6 @@ def run_all_plots(df, image_dir):
     """
     plt.close('all')
 
-    # --- 1. Correlation Matrix Heatmap ---
     cols_to_drop = ['index', 'T1', 'P1']
     corr_df = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
 
@@ -63,8 +62,7 @@ def run_all_plots(df, image_dir):
     print(f"Saved: {heatmap_path}")
     plt.show()
 
-    # --- 2. Speed-based Torque and Fuel Plots ---
-    # UPDATED: Changed [ ] to ( ) to match sanitized headers from CleaningData.py
+    #  Changed [ ] to ( ) to match sanitized headers from CleaningData.py
     gt_torque_col = 'Gas Turbine (GT) shaft torque (GTT) (kN m)'
     fuel_col = 'Fuel flow (mf) (kg/s)'
     speed_col = 'Ship speed (v)'
@@ -94,7 +92,7 @@ def run_all_plots(df, image_dir):
         plt.savefig(fig1_path)
         plt.close(fig1)
 
-        # Plot 2: Turbine Torque & Fuel Flow
+        # Plot: Turbine Torque & Fuel Flow
         fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         ax1.plot(speed_df[gt_torque_col], color='tab:red', linewidth=1.5)
         ax1.set_title(f'Turbine Torque at Speed {speed}')

@@ -26,7 +26,7 @@ def create_main_trend_chart(df, turbine_events, comp_threshold=0.95, turb_thresh
         hovertemplate="Sample: %{x}<br>Health: %{y:.4f}"
     ))
 
-    # Add Maintenance Thresholds
+    # Maintenance Thresholds
     fig.add_hline(y=turb_threshold, line_dash="dash", line_color=ACCENT_AMBER, 
                   annotation_text="GT Maint. Threshold", annotation_position="top left",
                   annotation_font_color=ACCENT_AMBER)
@@ -35,7 +35,7 @@ def create_main_trend_chart(df, turbine_events, comp_threshold=0.95, turb_thresh
                   annotation_text="Comp Maint. Threshold", annotation_position="bottom left",
                   annotation_font_color=ACCENT_CYAN)
 
-    # Mark Turbine Maintenance Events (The "Sawtooth" jumps)
+    # Turbine Maintenance Events (The Sawtooth observations)
     for event_idx in turbine_events:
         fig.add_vline(x=event_idx, line_width=1, line_dash="dot", line_color=ACCENT_TEAL)
         fig.add_annotation(x=event_idx, y=1.01, text="GT MAINT", showarrow=False, 

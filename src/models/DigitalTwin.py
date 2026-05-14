@@ -18,7 +18,6 @@ class PropulsionDigitalTwin:
         self.health_history = []
         self.MAINTENANCE_THRESHOLD = 0.975 # Updated based on observed data
         
-        # Cycle Tracking
         self.maintenance_history = []
         self.current_cycle_start_idx = 0
         self.last_health = {"compressor": 1.0, "turbine": 1.0}
@@ -27,7 +26,6 @@ class PropulsionDigitalTwin:
         """
         Predicts health from actual sensor readings.
         """
-        # Ensure input is 2D
         if len(input_data.shape) == 1:
             input_data = input_data.values.reshape(1, -1)
         else:
@@ -39,7 +37,6 @@ class PropulsionDigitalTwin:
         comp_decay = float(self.compressor_model.predict(X_comp)[0])
         turb_decay = float(self.turbine_model.predict(X_turb)[0])
         
-        # Detect Maintenance Events (Jumps)
         self._detect_jumps(comp_decay, turb_decay)
 
         status = {
@@ -94,7 +91,6 @@ class PropulsionDigitalTwin:
     def diagnose_issues(self, df):
         """
         Identify which sensors are deviating most from expected baseline.
-        Simple Root Cause Analysis.
         """
         latest = df.iloc[-1]
         # Basic logic: compare current readings to average of 'healthy' data (health > 0.99)
@@ -105,7 +101,6 @@ class PropulsionDigitalTwin:
         baseline = healthy_data.mean()
         deviations = {}
         
-        # Check key sensors for deviation
         key_sensors = ["t48", "t2", "p48", "p2", "fuel_flow"]
         for s in key_sensors:
             if s in latest and s in baseline:

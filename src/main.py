@@ -6,13 +6,11 @@ import joblib
 from CleaningData import load_and_clean_data, split_and_save_data
 from Plots import run_all_plots
 
-# Setup paths
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 src_path = os.path.join(project_root, 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Also keep the models subpath for direct imports if needed
 models_path = os.path.join(src_path, 'models')
 if models_path not in sys.path:
     sys.path.append(models_path)
@@ -41,7 +39,6 @@ def select_best_model(results, metric="Test R2"):
 
 
 def main():
-    # 1. Existing Data Setup
     df = load_and_clean_data()
     split_and_save_data(df)
 
@@ -52,10 +49,9 @@ def main():
         train_path, test_path = 'Data/train.csv', 'Data/test.csv'
         image_dir = 'images'
 
-    # 2. Existing EDA Plots
+
     run_all_plots(df, image_dir)
 
-    # 3. Model Training and Comparison
     targets = ['GT Compressor decay state coefficient', 'GT Turbine decay state coefficient']
     all_results = []
     best_models = {}
@@ -70,7 +66,6 @@ def main():
         model_path = os.path.join(model_dir, f"{target_key.lower()}_model.joblib")
         scaler_path = os.path.join(model_dir, f"{target_key.lower()}_scaler.joblib")
 
-        # Force re-evaluation by always training
         print(f"\n--- Re-evaluating for {target} ---")
         results = [
             train_random_forest(train_path, test_path, target, image_dir),
@@ -83,16 +78,13 @@ def main():
         best_models[target_key] = best["model_object"]
         best_scalers[target_key] = best.get("scaler", None)
 
-        # Save the best model and scaler
         joblib.dump(best_models[target_key], model_path)
         if best_scalers[target_key] is not None:
             joblib.dump(best_scalers[target_key], scaler_path)
         print(f"  Saved best {target_key} model to {model_path}")
 
-        # Detailed comparison plots for this specific target
         run_model_comparison_plots(train_path, test_path, target, image_dir)
 
-    # 4. Existing Final Summary Table & Plot
     if all_results:
         comparison_df = pd.DataFrame(all_results)
         print("\nFinal Model Comparison Table:\n", comparison_df.drop(columns=['model_object', 'scaler'], errors='ignore'))
@@ -105,7 +97,6 @@ def main():
     else:
         print("\nAll models loaded from disk — skipping R² comparison chart.")
 
-    # 5. Digital Twin & Predictive Maintenance Dashboard
     print("\n--- Launching Digital Twin Dashboard ---")
     print(" Note: Dashboard analyses historical CSV data (not live telemetry)")
     dt_twin = PropulsionDigitalTwin(

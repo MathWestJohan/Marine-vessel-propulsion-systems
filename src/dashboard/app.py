@@ -4,7 +4,7 @@ import numpy as np
 import gradio as gr
 import warnings
 
-# Suppress sklearn feature name warnings
+# Suppress sklearn feature name warning
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 from .components import (
@@ -14,7 +14,6 @@ from .components import (
 from .charts import create_main_trend_chart, create_gauge, create_sensor_impact_chart
 from .chatbot import chat_stream
 
-# --- Constants & Config ---
 # We use a mapping that handles the hidden non-breaking spaces found in the raw CSV
 COL_MAP = {
     "Lever position": "lever_pos",
@@ -47,7 +46,7 @@ def load_data():
     data_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "data.csv")
     df = pd.read_csv(data_path)
     
-    # Robust cleaning: strip standard whitespace AND non-breaking spaces (\xa0)
+    # Cleaning: strip standard whitespace AND non-breaking spaces
     df.columns = [c.strip().replace('\xa0', '') for c in df.columns]
     
     # Rename to our internal standardized names
@@ -98,7 +97,7 @@ def launch_dashboard(dt_instance):
     MAX_CYCLES = RAW_DF['mission_cycle'].max()
     
     def update_dashboard(cycle_selection, downsample, random_trigger, active_faults):
-        # 1. Filter Data by Mission Cycle
+        # Filter Data by Mission Cycle
         df_baseline = RAW_DF[RAW_DF['mission_cycle'] == 1]
         
         if cycle_selection == "All Mission Data":
@@ -107,7 +106,6 @@ def launch_dashboard(dt_instance):
             df_selected_for_impact = RAW_DF[RAW_DF['mission_cycle'] == MAX_CYCLES]
         else:
             try:
-                # Correctly parse "Mission Cycle 10" -> 10
                 cycle_num = int(cycle_selection.split(" ")[-1])
             except (IndexError, ValueError):
                 cycle_num = 1
@@ -115,7 +113,6 @@ def launch_dashboard(dt_instance):
             snapshot_label = f"Mission Cycle {cycle_num} Detail (27 \u2192 3 kn)"
             df_selected_for_impact = df_view
 
-        # 2. Select Snapshot
         if len(df_view) > 0:
             random_idx = np.random.randint(0, len(df_view))
             current_snapshot = df_view.iloc[random_idx].copy()
@@ -123,7 +120,6 @@ def launch_dashboard(dt_instance):
         else:
             return [None] * 13
 
-        # --- Apply Injected Faults ---
         fault_info = ""
         if active_faults:
             for sensor, offset_pct in active_faults.items():
@@ -131,7 +127,6 @@ def launch_dashboard(dt_instance):
                     current_snapshot[sensor] = current_snapshot[sensor] * (1 + offset_pct / 100)
                     fault_info += f"FAULT: {sensor} shifted {offset_pct:+.1f}% | "
 
-        # 3. ML Model Predictions (Virtual Sensing)
         feature_data = current_snapshot[FEATURE_COLS]
         
         if dt_instance:
@@ -144,7 +139,6 @@ def launch_dashboard(dt_instance):
             turb_health = float(current_snapshot["turb_decay"])
             source_tag = "Ground Truth"
         
-        # Calculate RUL
         comp_rul = calculate_rul(RAW_DF, comp_health, target_col='comp_decay', threshold=0.95)
         turb_rul = calculate_rul(RAW_DF, turb_health, target_col='turb_decay', threshold=0.975)
         
@@ -154,7 +148,6 @@ def launch_dashboard(dt_instance):
         comp_status = "HEALTHY" if comp_health >= 0.95 else "CRITICAL"
         turb_status = "HEALTHY" if turb_health >= 0.975 else "CRITICAL"
 
-        # 4. HTML Components
         comp_card = health_card(f"Compressor ({source_tag})", comp_health, f"Maint. in: {comp_rul}", ACCENT_CYAN, comp_status)
         turb_card = health_card(f"Gas Turbine ({source_tag})", turb_health, f"Maint. in: {turb_rul}", ACCENT_AMBER, turb_status)
         
@@ -179,7 +172,6 @@ def launch_dashboard(dt_instance):
             grid_html += f"<div style='background:rgba(239,68,68,0.1); border:1px solid {ACCENT_RED}; padding:5px; margin-bottom:10px; font-size:0.8rem; color:{ACCENT_RED};'>{fault_info}</div>"
         grid_html += sensor_grid(sensors)
 
-        # 5. Plots
         df_plot = df_view
         if downsample:
             step = max(1, len(df_plot) // 1000)
@@ -202,7 +194,6 @@ def launch_dashboard(dt_instance):
         random_trigger = gr.State(0)
         active_faults = gr.State({})
         
-        # States for Chatbot context
         chat_snapshot = gr.State()
         chat_comp_health = gr.State()
         chat_turb_health = gr.State()
@@ -270,7 +261,6 @@ def launch_dashboard(dt_instance):
                             additional_inputs=[chat_snapshot, chat_comp_health, chat_turb_health, chat_comp_rul, chat_turb_rul, active_faults]
                         )
 
-        # Wire up events
         inputs = [cycle_dd, downsample_chk, random_trigger, active_faults]
         outputs = [
             comp_out, turb_out, sensor_out, main_chart, comp_gauge_out, turb_gauge_out, impact_chart, active_faults,

@@ -47,13 +47,13 @@ def chat_stream(message, history, df_snapshot, comp_health, turb_health, comp_ru
     if active_faults_dict:
         fault_str = ", ".join([f"{k} ({v:+.1f}%)" for k, v in active_faults_dict.items()])
 
-    # Build the system prompt
+    # Building the system prompt
     system_prompt = get_system_context(df_snapshot, comp_health, turb_health, comp_rul, turb_rul, fault_str)
 
     # Construct the conversation history for Ollama
     messages = [{"role": "system", "content": system_prompt}]
     
-    # Handle Gradio history format (list of dicts with 'role' and 'content')
+    # Handle Gradio history format
     for turn in history:
         messages.append(turn)
         

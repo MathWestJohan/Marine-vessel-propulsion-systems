@@ -1,6 +1,6 @@
 import numpy as np
 
-# --- Theme tokens (Modern Dark Marine) ---
+#  Theme Modern Dark Marine
 BG_COLOR = "#0f172a"
 CARD_COLOR = "#1e293b"
 BORDER_COLOR = "#334155"
